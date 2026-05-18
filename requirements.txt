@@ -1,0 +1,5 @@
+agent-framework-openai>=1.4.0
+python-dotenv>=1.0.1
+azure-identity>=1.17.1
+fastapi>=0.112.0
+uvicorn[standard]>=0.30.6

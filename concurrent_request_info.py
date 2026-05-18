@@ -22,24 +22,93 @@ Prerequisites:
 """
 
 import asyncio
+import logging
+import os
+import smtplib
+import sys
+from email.message import EmailMessage
+from pathlib import Path
 from typing import Any
 
+# Add parent directory to path for imports
+sys.path.insert(0, str(Path(__file__).parent.parent))
+
 from agent_framework import (
-    AgentRequestInfoResponse,
-    ChatMessage,
-    ConcurrentBuilder,
-    RequestInfoEvent,
     Role,
-    WorkflowOutputEvent,
+    Message,
+    WorkflowEvent,
     WorkflowRunState,
-    WorkflowStatusEvent,
 )
 from agent_framework._workflows._agent_executor import AgentExecutorResponse
-from agent_framework.azure import AzureOpenAIChatClient
 from azure.identity import AzureCliCredential
+from agent_framework_orchestrations import AgentRequestInfoResponse, ConcurrentBuilder
+from dotenv import load_dotenv
+from agent_framework_openai import OpenAIChatCompletionClient
+
+load_dotenv()
+
+logger = logging.getLogger(__name__)
 
 # Store chat client at module level for aggregator access
-_chat_client: AzureOpenAIChatClient | None = None
+_chat_client: OpenAIChatCompletionClient | None = None
+
+
+def _resolve_email_recipient() -> tuple[str, str]:
+    recipient = os.getenv("EMAIL_RECIPIENT")
+    if recipient:
+        return recipient, "EMAIL_RECIPIENT"
+
+    recipient = os.getenv("GMAIL_SMTP_USER")
+    if recipient:
+        return recipient, "GMAIL_SMTP_USER fallback"
+
+    recipient = os.getenv("SMTP_USER")
+    if recipient:
+        return recipient, "SMTP_USER fallback"
+
+    raise ValueError("Missing recipient config. Set EMAIL_RECIPIENT, GMAIL_SMTP_USER, or SMTP_USER.")
+
+
+def send_summary_email_via_smtp(summary: str) -> str:
+    """Send the workflow summary to the configured recipient.
+
+    Returns:
+        Recipient email address used for delivery.
+    """
+    recipient, recipient_source = _resolve_email_recipient()
+    smtp_user = os.getenv("GMAIL_SMTP_USER") or os.getenv("SMTP_USER")
+    smtp_password = os.getenv("GMAIL_SMTP_APP_PASSWORD") or os.getenv("SMTP_APP_PASSWORD")
+
+    if not smtp_user or not smtp_password:
+        raise ValueError(
+            "Missing SMTP config. Set GMAIL_SMTP_USER and GMAIL_SMTP_APP_PASSWORD (or SMTP_USER and SMTP_APP_PASSWORD)."
+        )
+
+    logger.info("Sending email to: %s (%s)", recipient, recipient_source)
+
+    message = EmailMessage()
+    message["From"] = smtp_user
+    message["To"] = recipient
+    message["Subject"] = "LLM Impact Analysis - Concurrent HITL Summary"
+    message.set_content(summary)
+
+    with smtplib.SMTP_SSL("smtp.gmail.com", 465) as smtp:
+        smtp.login(smtp_user, smtp_password)
+        smtp.send_message(message)
+
+    return recipient
+
+
+def request_email_send_approval(summary: str, recipient: str) -> bool:
+    """Ask for explicit human approval before sending summary email."""
+    print("\n" + "=" * 60)
+    print("EMAIL SEND APPROVAL REQUIRED")
+    print("=" * 60)
+    print(f"The following summary will be emailed to: {recipient}\n")
+    print(summary)
+    print("\nApprove sending email? [y/N]")
+    choice = input("Choice: ").strip().lower()  # noqa: ASYNC250
+    return choice in {"y", "yes"}
 
 
 async def aggregate_with_synthesis(results: list[AgentExecutorResponse]) -> Any:
@@ -71,7 +140,7 @@ async def aggregate_with_synthesis(results: list[AgentExecutorResponse]) -> Any:
             # Check for human feedback in the conversation (will be last user message if present)
             if r.full_conversation:
                 for msg in reversed(r.full_conversation):
-                    if msg.role == Role.USER and msg.text and "perspectives" not in msg.text.lower():
+                    if msg.role == "user" and msg.text and "perspectives" not in msg.text.lower():
                         human_guidance = msg.text
                         break
         except Exception:
@@ -80,15 +149,15 @@ async def aggregate_with_synthesis(results: list[AgentExecutorResponse]) -> Any:
     # Build prompt with human guidance if provided
     guidance_text = f"\n\nHuman guidance: {human_guidance}" if human_guidance else ""
 
-    system_msg = ChatMessage(
-        Role.SYSTEM,
-        text=(
+    system_msg = Message(
+        "system",
+        [
             "You are a synthesis expert. Consolidate the following analyst perspectives "
             "into one cohesive, balanced summary (3-4 sentences). If human guidance is provided, "
             "prioritize aspects as directed."
-        ),
+        ],
     )
-    user_msg = ChatMessage(Role.USER, text="\n\n".join(expert_sections) + guidance_text)
+    user_msg = Message("user", ["\n\n".join(expert_sections) + guidance_text])
 
     response = await _chat_client.get_response([system_msg, user_msg])
     return response.messages[-1].text if response.messages else ""
@@ -96,10 +165,38 @@ async def aggregate_with_synthesis(results: list[AgentExecutorResponse]) -> Any:
 
 async def main() -> None:
     global _chat_client
-    _chat_client = AzureOpenAIChatClient(credential=AzureCliCredential())
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)-8s %(name)s  %(message)s")
+
+    # Pin a known-supported Azure OpenAI API version so the sample does not inherit
+    # a stale or unsupported value from the environment.
+    api_version = "2024-12-01-preview"
+
+    endpoint = os.getenv("AZURE_OPENAI_ENDPOINT")
+    model = os.getenv("AZURE_OPENAI_CHAT_MODEL") or os.getenv("AZURE_OPENAI_MODEL")
+    api_key = os.getenv("AZURE_OPENAI_API_KEY")
+
+    if not endpoint or not model:
+        raise ValueError(
+            "Missing Azure OpenAI config. Set AZURE_OPENAI_ENDPOINT and AZURE_OPENAI_CHAT_MODEL (or AZURE_OPENAI_MODEL)."
+        )
+
+    if api_key:
+        _chat_client = OpenAIChatCompletionClient(
+            model=model,
+            azure_endpoint=endpoint,
+            api_version=api_version,
+            api_key=api_key,
+        )
+    else:
+        _chat_client = OpenAIChatCompletionClient(
+            model=model,
+            azure_endpoint=endpoint,
+            api_version=api_version,
+            credential=AzureCliCredential(),
+        )
 
     # Create agents that analyze from different perspectives
-    technical_analyst = _chat_client.create_agent(
+    technical_analyst = _chat_client.as_agent(
         name="technical_analyst",
         instructions=(
             "You are a technical analyst. When given a topic, provide a technical "
@@ -108,7 +205,7 @@ async def main() -> None:
         ),
     )
 
-    business_analyst = _chat_client.create_agent(
+    business_analyst = _chat_client.as_agent(
         name="business_analyst",
         instructions=(
             "You are a business analyst. When given a topic, provide a business "
@@ -117,7 +214,7 @@ async def main() -> None:
         ),
     )
 
-    user_experience_analyst = _chat_client.create_agent(
+    user_experience_analyst = _chat_client.as_agent(
         name="ux_analyst",
         instructions=(
             "You are a UX analyst. When given a topic, provide a user experience "
@@ -128,8 +225,7 @@ async def main() -> None:
 
     # Build workflow with request info enabled and custom aggregator
     workflow = (
-        ConcurrentBuilder()
-        .participants([technical_analyst, business_analyst, user_experience_analyst])
+        ConcurrentBuilder(participants=[technical_analyst, business_analyst, user_experience_analyst])
         .with_aggregator(aggregate_with_synthesis)
         # Only enable request info for the technical analyst agent
         .with_request_info(agents=["technical_analyst"])
@@ -140,31 +236,31 @@ async def main() -> None:
     pending_responses: dict[str, AgentRequestInfoResponse] | None = None
     workflow_complete = False
 
-    print("Starting multi-perspective analysis workflow...")
-    print("=" * 60)
+    logger.info("Starting multi-perspective analysis workflow")
 
     while not workflow_complete:
         # Run or continue the workflow
         stream = (
-            workflow.send_responses_streaming(pending_responses)
+            workflow.run(responses=pending_responses, stream=True)
             if pending_responses
-            else workflow.run_stream("Analyze the impact of large language models on software development.")
+            else workflow.run(
+                "Analyze the impact of large language models on software development.",
+                stream=True,
+            )
         )
 
         pending_responses = None
 
         # Process events
         async for event in stream:
-            if isinstance(event, RequestInfoEvent):
+            if isinstance(event, WorkflowEvent) and event.type == "request_info":
                 if isinstance(event.data, AgentExecutorResponse):
                     # Display agent output for review and potential modification
-                    print("\n" + "-" * 40)
-                    print("INPUT REQUESTED")
-                    print(
-                        f"Agent {event.source_executor_id} just responded with: '{event.data.agent_response.text}'. "
-                        "Please provide your feedback."
+                    logger.info(
+                        "INPUT REQUESTED: agent %s responded: %s",
+                        event.source_executor_id,
+                        event.data.agent_response.text,
                     )
-                    print("-" * 40)
                     if event.data.full_conversation:
                         print("Conversation context:")
                         recent = (
@@ -173,9 +269,10 @@ async def main() -> None:
                             else event.data.full_conversation
                         )
                         for msg in recent:
-                            name = msg.author_name or msg.role.value
+                            role_name = msg.role.value if hasattr(msg.role, "value") else msg.role
+                            name = msg.author_name or role_name
                             text = (msg.text or "")[:150]
-                            print(f"  [{name}]: {text}...")
+                            logger.debug("  [%s]: %s...", name, text)
                         print("-" * 40)
 
                     # Get human input to steer this agent's contribution
@@ -186,19 +283,23 @@ async def main() -> None:
                         user_input = AgentRequestInfoResponse.from_strings([user_input])
 
                     pending_responses = {event.request_id: user_input}
-                    print("(Resuming workflow...)")
+                    logger.info("Resuming workflow")
 
-            elif isinstance(event, WorkflowOutputEvent):
-                print("\n" + "=" * 60)
-                print("WORKFLOW COMPLETE")
-                print("=" * 60)
-                print("Aggregated output:")
+            elif isinstance(event, WorkflowEvent) and event.type == "output":
+                logger.info("WORKFLOW COMPLETE")
                 # Custom aggregator returns a string
                 if event.data:
-                    print(event.data)
+                    logger.info("Aggregated output: %s", event.data)
+                    summary_text = str(event.data)
+                    recipient, _ = _resolve_email_recipient()
+                    if request_email_send_approval(summary_text, recipient):
+                        recipient = send_summary_email_via_smtp(summary_text)
+                        logger.info("Summary email sent to: %s", recipient)
+                    else:
+                        logger.info("Email send rejected by human reviewer.")
                 workflow_complete = True
 
-            elif isinstance(event, WorkflowStatusEvent) and event.state == WorkflowRunState.IDLE:
+            elif isinstance(event, WorkflowEvent) and event.type == "status" and event.state == WorkflowRunState.IDLE:
                 workflow_complete = True
 
 

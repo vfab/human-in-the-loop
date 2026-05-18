@@ -1,50 +1,39 @@
-# [PROJECT_NAME] Constitution
-<!-- Example: Spec Constitution, TaskFlow Constitution, etc. -->
+# AI Knowledge Assistant Constitution
 
 ## Core Principles
 
-### [PRINCIPLE_1_NAME]
-<!-- Example: I. Library-First -->
-[PRINCIPLE_1_DESCRIPTION]
-<!-- Example: Every feature starts as a standalone library; Libraries must be self-contained, independently testable, documented; Clear purpose required - no organizational-only libraries -->
+### I. SOLID & Clean Architecture
+Follow SOLID principles and layered Clean Architecture: API → Service → Domain → Data. Dependencies point inward only; Domain has no outward dependencies.
 
-### [PRINCIPLE_2_NAME]
-<!-- Example: II. CLI Interface -->
-[PRINCIPLE_2_DESCRIPTION]
-<!-- Example: Every library exposes functionality via CLI; Text in/out protocol: stdin/args → stdout, errors → stderr; Support JSON + human-readable formats -->
+### II. Test-First (NON-NEGOTIABLE)
+TDD mandatory: tests written before or alongside production code. Red-Green-Refactor cycle strictly enforced. No implementation ships without corresponding tests.
 
-### [PRINCIPLE_3_NAME]
-<!-- Example: III. Test-First (NON-NEGOTIABLE) -->
-[PRINCIPLE_3_DESCRIPTION]
-<!-- Example: TDD mandatory: Tests written → User approved → Tests fail → Then implement; Red-Green-Refactor cycle strictly enforced -->
+### III. All Unit Tests Must Pass Before Merge (NON-NEGOTIABLE)
+All unit tests must pass before any merge to `main`. This is an absolute gate — a failing unit test is a blocker, not a warning. The test command is:
+`python -m pytest tests/unit/ -q --cov=. --cov-report=term-missing`
 
-### [PRINCIPLE_4_NAME]
-<!-- Example: IV. Integration Testing -->
-[PRINCIPLE_4_DESCRIPTION]
-<!-- Example: Focus areas requiring integration tests: New library contract tests, Contract changes, Inter-service communication, Shared schemas -->
+### IV. Minimum 95% Code Coverage
+Minimum code coverage: **95%** measured by `pytest-cov` across `backend/`. Untestable lines (e.g. optional native drivers, third-party env-var setup) must be explicitly noted in comments and excluded from the coverage gate.
 
-### [PRINCIPLE_5_NAME]
-<!-- Example: V. Observability, VI. Versioning & Breaking Changes, VII. Simplicity -->
-[PRINCIPLE_5_DESCRIPTION]
-<!-- Example: Text I/O ensures debuggability; Structured logging required; Or: MAJOR.MINOR.BUILD format; Or: Start simple, YAGNI principles -->
+### V. Observability
+All services must emit structured JSON logs to stdout. Every deployed service must have a diagnostic setting routing logs to the shared log aggregation workspace. All log entries must include a `correlation_id`. No service ships without observability.
 
-## [SECTION_2_NAME]
-<!-- Example: Additional Constraints, Security Requirements, Performance Standards, etc. -->
+## Testing Standards
 
-[SECTION_2_CONTENT]
-<!-- Example: Technology stack requirements, compliance standards, deployment policies, etc. -->
+- Unit test command: `python -m pytest tests/unit/ -q --cov=. --cov-report=term-missing`
+- Frontend test command: `cd frontend && npm test`
+- All tests must pass locally before committing
+- CI/CD enforces the same gate — a red pipeline blocks merge
 
-## [SECTION_3_NAME]
-<!-- Example: Development Workflow, Review Process, Quality Gates, etc. -->
+## Quality Gates
 
-[SECTION_3_CONTENT]
-<!-- Example: Code review requirements, testing gates, deployment approval process, etc. -->
+- Feature flags recommended for all new user-facing features
+- Semantic versioning required (MAJOR.MINOR.BUILD)
+- Continuous improvement enforced — tech debt tracked and addressed
+- The Reviewer agent validates TDD compliance and standards on every PR
 
 ## Governance
-<!-- Example: Constitution supersedes all other practices; Amendments require documentation, approval, migration plan -->
 
-[GOVERNANCE_RULES]
-<!-- Example: All PRs/reviews must verify compliance; Complexity must be justified; Use [GUIDANCE_FILE] for runtime development guidance -->
+This constitution supersedes all other practices. Amendments require documentation in `docs/decisions/` as an ADR. All PRs must verify compliance with these principles. Complexity must be justified. Refer to `agents/` for role responsibilities and `docs/how-to/` for process guidance.
 
-**Version**: [CONSTITUTION_VERSION] | **Ratified**: [RATIFICATION_DATE] | **Last Amended**: [LAST_AMENDED_DATE]
-<!-- Example: Version: 2.1.1 | Ratified: 2025-06-13 | Last Amended: 2025-07-16 -->
+**Version**: 1.0.0 | **Ratified**: 2025-01-01 | **Last Amended**: 2026-05-08
