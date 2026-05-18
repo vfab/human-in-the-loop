@@ -62,6 +62,15 @@ class HumanFeedbackRequest:
     """Request sent to the human for feedback on the agent's guess."""
 
     prompt: str
+
+
+@dataclass
+class GuessingGameState:
+    """Tracks the state of the guessing game for smarter guessing."""
+
+    lower_bound: int = 1
+    upper_bound: int = 100
+    last_guess: int | None = None
 class TurnManager(Executor):
     """Coordinates turns between the agent and the human.
 
@@ -73,6 +82,7 @@ class TurnManager(Executor):
 
     def __init__(self, id: str | None = None):
         super().__init__(id=id or "turn_manager")
+        self.game_state = GuessingGameState()
 
     @handler
     async def start(self, _: str, ctx: WorkflowContext[AgentExecutorRequest]) -> None:
@@ -82,7 +92,7 @@ class TurnManager(Executor):
         - Input is a simple starter token (ignored here).
         - Output is an AgentExecutorRequest that triggers the agent to produce a guess.
         """
-        user = Message("user", ["Start by making your first guess."])
+        user = Message("user", ["Start by making your first guess of a number between 1 and 100."])
         await ctx.send_message(AgentExecutorRequest(messages=[user], should_respond=True))
 
     @handler
@@ -94,17 +104,18 @@ class TurnManager(Executor):
         """Handle the agent's guess and request human guidance.
 
         Steps:
-        1) Parse the agent's JSON into GuessOutput for robustness.
-        2) Request info with a HumanFeedbackRequest as the payload.
+        1) Parse the agent's output to extract the guess.
+        2) Update game state bounds based on feedback.
+        3) Request info with a HumanFeedbackRequest as the payload.
         """
-        # Parse model output and extract first integer guess.
+        # Parse model output and extract first integer guess (1-100).
         text = result.agent_response.text or ""
-        match = re.search(r"\b(10|[1-9])\b", text)
+        match = re.search(r"\b([1-9][0-9]?|100)\b", text)
         if not match:
             await ctx.request_info(
                 request_data=HumanFeedbackRequest(
                     prompt=(
-                        "I could not parse the agent guess. Type one of: higher, lower, correct, or exit. "
+                        "I could not parse the agent guess. Type one of: higher, much higher, lower, much lower, correct, or exit. "
                         f"Raw agent output: {text}"
                     )
                 ),
@@ -113,12 +124,13 @@ class TurnManager(Executor):
             return
 
         last_guess = int(match.group(1))
+        self.game_state.last_guess = last_guess
 
-        # Craft a precise human prompt that defines higher and lower relative to the agent's guess.
+        # Craft a precise human prompt that defines the feedback options.
         prompt = (
             f"The agent guessed: {last_guess}. "
-            "Type one of: higher (your number is higher than this guess), "
-            "lower (your number is lower than this guess), correct, or exit."
+            "Type one of: higher (closer but still higher), much higher (significantly higher), "
+            "lower (closer but still lower), much lower (significantly lower), correct, or exit."
         )
         # Send a request with a prompt as the payload and expect a string reply.
         await ctx.request_info(
@@ -139,16 +151,36 @@ class TurnManager(Executor):
         reply = feedback.strip().lower()
 
         if reply == "correct":
-            await ctx.yield_output("Guessed correctly!")
+            if self.game_state.last_guess:
+                await ctx.yield_output(f"Guessed correctly: {self.game_state.last_guess}")
+            else:
+                await ctx.yield_output("Guessed correctly!")
             return
 
-        # Provide feedback to the agent to try again.
+        # Update bounds based on feedback for smarter guessing.
+        if reply in ["higher", "much higher"]:
+            self.game_state.lower_bound = (self.game_state.last_guess or self.game_state.lower_bound) + 1
+        elif reply in ["lower", "much lower"]:
+            self.game_state.upper_bound = (self.game_state.last_guess or self.game_state.upper_bound) - 1
+
+        # Calculate next guess using binary search strategy.
+        next_guess = (self.game_state.lower_bound + self.game_state.upper_bound) // 2
+        
+        # Provide feedback to the agent to try again with smart guidance.
+        feedback_description = {
+            "higher": "a bit higher",
+            "much higher": "much higher",
+            "lower": "a bit lower",
+            "much lower": "much lower",
+        }.get(reply, reply)
+        
         user_msg = Message(
             "user",
             [
                 (
-                    f"Feedback: {reply}. Return only your next guess as a single integer between 1 and 10. "
-                    "Do not include any other words."
+                    f"Feedback: your guess should be {feedback_description}. "
+                    f"The number is between {self.game_state.lower_bound} and {self.game_state.upper_bound}. "
+                    f"Please guess {next_guess}."
                 )
             ],
         )
@@ -156,7 +188,7 @@ class TurnManager(Executor):
 
 
 def create_guessing_agent():
-    """Create the guessing agent with instructions to guess a number between 1 and 10."""
+    """Create the guessing agent with instructions to guess a number between 1 and 100."""
     api_version = "2024-12-01-preview"
     endpoint = os.getenv("AZURE_OPENAI_ENDPOINT")
     model = os.getenv("AZURE_OPENAI_CHAT_MODEL") or os.getenv("AZURE_OPENAI_MODEL")
@@ -185,9 +217,13 @@ def create_guessing_agent():
     return chat_client.as_agent(
         name="GuessingAgent",
         instructions=(
-            "You guess a number between 1 and 10. "
-            "If the user says 'higher' or 'lower', adjust your next guess. "
-            "You MUST return only the guessed integer (for example: 7). "
+            "You are playing a guessing game to find a number between 1 and 100. "
+            "The human will give you feedback: 'higher' (your guess is too low, but close), "
+            "'much higher' (your guess is too low by a lot), 'lower' (your guess is too high, but close), "
+            "'much lower' (your guess is too high by a lot). "
+            "Use binary search strategy: narrow down the range quickly. "
+            "When you receive feedback with specific bounds, use them to calculate the midpoint. "
+            "You MUST return only the guessed integer (for example: 50). "
             "No explanations or additional text."
         ),
     )
@@ -267,7 +303,7 @@ async def main() -> None:
                 print(f"HITL> {prompt}")
                 # Instructional print already appears above. The input line below is the user entry point.
                 # If desired, you can add more guidance here, but keep it concise.
-                answer = input("Enter higher/lower/correct/exit: ").lower()  # noqa: ASYNC250
+                answer = input("Enter higher/much higher/lower/much lower/correct/exit: ").lower()  # noqa: ASYNC250
                 if answer == "exit":
                     logger.info("Exiting")
                     return
@@ -279,15 +315,15 @@ async def main() -> None:
     """
     Sample Output:
 
-    HITL> The agent guessed: 5. Type one of: higher (your number is higher than this guess), lower (your number is lower than this guess), correct, or exit.
-    Enter higher/lower/correct/exit: higher
-    HITL> The agent guessed: 8. Type one of: higher (your number is higher than this guess), lower (your number is lower than this guess), correct, or exit.
-    Enter higher/lower/correct/exit: higher
-    HITL> The agent guessed: 10. Type one of: higher (your number is higher than this guess), lower (your number is lower than this guess), correct, or exit.
-    Enter higher/lower/correct/exit: lower
-    HITL> The agent guessed: 9. Type one of: higher (your number is higher than this guess), lower (your number is lower than this guess), correct, or exit.
-    Enter higher/lower/correct/exit: correct
-    Workflow output: Guessed correctly: 9
+    HITL> The agent guessed: 50. Type one of: higher (closer but still higher), much higher (significantly higher), lower (closer but still lower), much lower (significantly lower), correct, or exit.
+    Enter higher/much higher/lower/much lower/correct/exit: much higher
+    HITL> The agent guessed: 75. Type one of: higher (closer but still higher), much higher (significantly higher), lower (closer but still lower), much lower (significantly lower), correct, or exit.
+    Enter higher/much higher/lower/much lower/correct/exit: lower
+    HITL> The agent guessed: 62. Type one of: higher (closer but still higher), much higher (significantly higher), lower (closer but still lower), much lower (significantly lower), correct, or exit.
+    Enter higher/much higher/lower/much lower/correct/exit: higher
+    HITL> The agent guessed: 69. Type one of: higher (closer but still higher), much higher (significantly higher), lower (closer but still lower), much lower (significantly lower), correct, or exit.
+    Enter higher/much higher/lower/much lower/correct/exit: correct
+    Workflow output: Guessed correctly: 69
     """  # noqa: E501
 
 
