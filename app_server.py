@@ -44,6 +44,21 @@ class EmailAssistant:
 assistant = EmailAssistant(OpenAIChatClient())
 
 
+@app.get("/")
+async def root() -> dict[str, str | dict]:
+    return {
+        "name": "Human-in-the-Loop Email Assistant",
+        "version": "1.0.0",
+        "description": "An email assistant workflow that processes emails and provides responses",
+        "endpoints": {
+            "GET /health": "Health check endpoint",
+            "POST /run": "Run the email assistant workflow",
+            "GET /docs": "Interactive API documentation (Swagger UI)",
+            "GET /redoc": "ReDoc API documentation",
+        },
+    }
+
+
 @app.get("/health")
 async def health() -> dict[str, str]:
     return {"status": "ok"}
