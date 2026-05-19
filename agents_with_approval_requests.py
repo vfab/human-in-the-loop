@@ -80,11 +80,8 @@ class EmailAssistant:
         logger.info("Sending to AI agent for response...")
 
         # Get agent response
-        try:
-            response = await self.agent.run(message)
-            return response.text
-        except Exception as e:
-            return f"Error processing email: {e}"
+        response = await self.agent.run(message)
+        return response.text
 
 
 def send_email_via_smtp(email: Email, body: str) -> None:

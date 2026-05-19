@@ -25,21 +25,15 @@ import asyncio
 import logging
 import os
 import smtplib
-import sys
 from email.message import EmailMessage
-from pathlib import Path
 from typing import Any
 
-# Add parent directory to path for imports
-sys.path.insert(0, str(Path(__file__).parent.parent))
-
 from agent_framework import (
-    Role,
+    AgentExecutorResponse,
     Message,
     WorkflowEvent,
     WorkflowRunState,
 )
-from agent_framework._workflows._agent_executor import AgentExecutorResponse
 from azure.identity import AzureCliCredential
 from agent_framework_orchestrations import AgentRequestInfoResponse, ConcurrentBuilder
 from dotenv import load_dotenv
@@ -51,6 +45,12 @@ logger = logging.getLogger(__name__)
 
 # Store chat client at module level for aggregator access
 _chat_client: OpenAIChatCompletionClient | None = None
+
+
+def _role_to_text(role: Any) -> str:
+    """Normalize role values that may be enums or plain strings."""
+    value = getattr(role, "value", role)
+    return str(value).lower() if value is not None else ""
 
 
 def _resolve_email_recipient() -> tuple[str, str]:
@@ -140,7 +140,7 @@ async def aggregate_with_synthesis(results: list[AgentExecutorResponse]) -> Any:
             # Check for human feedback in the conversation (will be last user message if present)
             if r.full_conversation:
                 for msg in reversed(r.full_conversation):
-                    if msg.role == "user" and msg.text and "perspectives" not in msg.text.lower():
+                    if _role_to_text(getattr(msg, "role", "")) == "user" and msg.text and "perspectives" not in msg.text.lower():
                         human_guidance = msg.text
                         break
         except Exception:

@@ -25,19 +25,14 @@ import asyncio
 import logging
 import os
 import smtplib
-import sys
 from email.message import EmailMessage
-from pathlib import Path
 from typing import Any
 
-# Add parent directory to path for imports
-sys.path.insert(0, str(Path(__file__).parent.parent))
-
 from agent_framework import (
+    AgentExecutorResponse,
     WorkflowEvent,
     WorkflowRunState,
 )
-from agent_framework._workflows._agent_executor import AgentExecutorResponse
 from azure.identity import AzureCliCredential
 from agent_framework_orchestrations import AgentRequestInfoResponse, SequentialBuilder
 from dotenv import load_dotenv

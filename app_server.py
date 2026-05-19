@@ -2,6 +2,7 @@ from dataclasses import dataclass
 
 from fastapi import FastAPI, HTTPException
 from agent_framework_openai import OpenAIChatClient
+from pydantic import BaseModel
 
 app = FastAPI(title="Human-in-the-Loop Email Assistant", version="1.0.0")
 
@@ -14,6 +15,12 @@ class Email:
 
     def __str__(self) -> str:
         return f"From: {self.sender}\nSubject: {self.subject}\n\n{self.body}"
+
+
+class EmailRequest(BaseModel):
+    sender: str
+    subject: str
+    body: str
 
 
 class EmailAssistant:
@@ -35,11 +42,8 @@ class EmailAssistant:
                 + message
             )
 
-        try:
-            result = await self.agent.run(message)
-            return result.text
-        except Exception as exc:
-            return f"Error processing email: {exc}"
+        result = await self.agent.run(message)
+        return result.text
 
 assistant = EmailAssistant(OpenAIChatClient())
 
@@ -65,22 +69,16 @@ async def health() -> dict[str, str]:
 
 
 @app.post("/run")
-async def run_workflow() -> dict[str, str]:
+async def run_workflow(request: EmailRequest) -> dict[str, str]:
     incoming_email = Email(
-        sender="sam@example.com",
-        subject="Urgent: Agent Framework Review Required",
-        body=(
-            "Hi Vince,\n\n"
-            "Please review the latest agent framework updates and provide your feedback. "
-            "This is critical for our Q4 roadmap. "
-            "The changes include improvements to error handling and performance optimization.\n\n"
-            "Can you review and provide feedback by end of week?\n\n"
-            "Thanks,\nSam"
-        ),
+        sender=request.sender,
+        subject=request.subject,
+        body=request.body,
     )
 
-    result = await assistant.process_email(incoming_email)
-    if result.startswith("Error processing email:"):
-        raise HTTPException(status_code=500, detail=result)
+    try:
+        result = await assistant.process_email(incoming_email)
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Error processing email: {exc}") from exc
 
     return {"response": result}

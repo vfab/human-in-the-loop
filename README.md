@@ -33,7 +33,9 @@ Human-in-the-loop (HITL) workflows integrate AI agents with human decision-makin
    ```env
    AZURE_OPENAI_ENDPOINT=https://<your-resource>.openai.azure.com/
    AZURE_OPENAI_API_KEY=<your-api-key>
-   AZURE_OPENAI_DEPLOYMENT_ID=<your-deployment-id>
+   AZURE_OPENAI_CHAT_MODEL=<your-model-deployment-name>
+   # Optional fallback used by samples:
+   # AZURE_OPENAI_MODEL=<your-model-deployment-name>
    ```
 
 3. Authenticate with Azure:
@@ -109,7 +111,13 @@ A FastAPI-based HTTP server exposing the email assistant workflow.
 
 - **POST `/run`** — Run the email assistant workflow
   ```bash
-  curl -X POST http://localhost:8000/run
+   curl -X POST http://localhost:8000/run \
+      -H "Content-Type: application/json" \
+      -d '{
+         "sender": "sam@example.com",
+         "subject": "Urgent: Agent Framework Review Required",
+         "body": "Please review the latest agent framework updates and share feedback by end of week."
+      }'
   ```
 
 **Running the Server:**
@@ -136,7 +144,7 @@ uvicorn app_server:app --reload
    docker run -p 8000:8000 \
      -e AZURE_OPENAI_ENDPOINT=$AZURE_OPENAI_ENDPOINT \
      -e AZURE_OPENAI_API_KEY=$AZURE_OPENAI_API_KEY \
-     -e AZURE_OPENAI_DEPLOYMENT_ID=$AZURE_OPENAI_DEPLOYMENT_ID \
+      -e AZURE_OPENAI_CHAT_MODEL=$AZURE_OPENAI_CHAT_MODEL \
      hitl-workflows:latest
    ```
 
