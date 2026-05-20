@@ -10,6 +10,18 @@ variable "resource_group_name" {
   default     = "rg-vfab"
 }
 
+variable "shared_remote_state_enabled" {
+  description = "When true, resolve shared foundation resource names from the shared stack Terraform state outputs."
+  type        = bool
+  default     = false
+}
+
+variable "shared_remote_state_path" {
+  description = "Path to the shared stack local Terraform state file used when shared_remote_state_enabled is true."
+  type        = string
+  default     = "/home/vfabro/src/rg-vfab-terraform/shared/terraform.tfstate"
+}
+
 variable "acr_name" {
   description = "Name of the Azure Container Registry."
   type        = string

@@ -12,6 +12,10 @@ on:
           - self-hosted
           - github-hosted-sp
 
+concurrency:
+  group: deploy-azure-terraform-${{ github.ref }}
+  cancel-in-progress: false
+
 permissions:
   id-token: write
   contents: read
@@ -56,8 +60,16 @@ jobs:
         run: |
           set -euo pipefail
           SUBSCRIPTION_ID=$(az account show --query id -o tsv | tr -d '\r')
-          terraform import -input=false azurerm_container_app.backend "/subscriptions/${SUBSCRIPTION_ID}/resourceGroups/${RESOURCE_GROUP_NAME}/providers/Microsoft.App/containerApps/${BACKEND_NAME}" || true
-          terraform import -input=false azurerm_static_web_app.frontend "/subscriptions/${SUBSCRIPTION_ID}/resourceGroups/${RESOURCE_GROUP_NAME}/providers/Microsoft.Web/staticSites/${FRONTEND_NAME}" || true
+          BACKEND_ID="/subscriptions/${SUBSCRIPTION_ID}/resourceGroups/${RESOURCE_GROUP_NAME}/providers/Microsoft.App/containerApps/${BACKEND_NAME}"
+          FRONTEND_ID="/subscriptions/${SUBSCRIPTION_ID}/resourceGroups/${RESOURCE_GROUP_NAME}/providers/Microsoft.Web/staticSites/${FRONTEND_NAME}"
+
+          if az resource show --ids "$BACKEND_ID" >/dev/null 2>&1; then
+            terraform import -input=false azurerm_container_app.backend "$BACKEND_ID"
+          fi
+
+          if az resource show --ids "$FRONTEND_ID" >/dev/null 2>&1; then
+            terraform import -input=false azurerm_static_web_app.frontend "$FRONTEND_ID"
+          fi
 
       - name: Terraform Validate
         working-directory: ${{ env.TF_WORKING_DIR }}
@@ -134,8 +146,16 @@ jobs:
         run: |
           set -euo pipefail
           SUBSCRIPTION_ID=$(az account show --query id -o tsv | tr -d '\r')
-          terraform import -input=false azurerm_container_app.backend "/subscriptions/${SUBSCRIPTION_ID}/resourceGroups/${RESOURCE_GROUP_NAME}/providers/Microsoft.App/containerApps/${BACKEND_NAME}" || true
-          terraform import -input=false azurerm_static_web_app.frontend "/subscriptions/${SUBSCRIPTION_ID}/resourceGroups/${RESOURCE_GROUP_NAME}/providers/Microsoft.Web/staticSites/${FRONTEND_NAME}" || true
+          BACKEND_ID="/subscriptions/${SUBSCRIPTION_ID}/resourceGroups/${RESOURCE_GROUP_NAME}/providers/Microsoft.App/containerApps/${BACKEND_NAME}"
+          FRONTEND_ID="/subscriptions/${SUBSCRIPTION_ID}/resourceGroups/${RESOURCE_GROUP_NAME}/providers/Microsoft.Web/staticSites/${FRONTEND_NAME}"
+
+          if az resource show --ids "$BACKEND_ID" >/dev/null 2>&1; then
+            terraform import -input=false azurerm_container_app.backend "$BACKEND_ID"
+          fi
+
+          if az resource show --ids "$FRONTEND_ID" >/dev/null 2>&1; then
+            terraform import -input=false azurerm_static_web_app.frontend "$FRONTEND_ID"
+          fi
 
       - name: Terraform Validate
         working-directory: ${{ env.TF_WORKING_DIR }}

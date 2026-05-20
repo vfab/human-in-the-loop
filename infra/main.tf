@@ -2,18 +2,32 @@
 # Shared rg-vfab foundation resources (RG/ACR/Container Apps Environment/Log Analytics)
 # are managed in ~/src/rg-vfab-terraform/shared.
 
+data "terraform_remote_state" "shared" {
+  count   = var.shared_remote_state_enabled ? 1 : 0
+  backend = "local"
+  config = {
+    path = var.shared_remote_state_path
+  }
+}
+
+locals {
+  shared_rg_name       = var.shared_remote_state_enabled ? data.terraform_remote_state.shared[0].outputs.resource_group_name : var.resource_group_name
+  shared_acr_name      = var.shared_remote_state_enabled ? data.terraform_remote_state.shared[0].outputs.acr_name : var.acr_name
+  shared_container_env = var.shared_remote_state_enabled ? data.terraform_remote_state.shared[0].outputs.container_env_name : var.container_env_name
+}
+
 data "azurerm_resource_group" "target" {
-  name = var.resource_group_name
+  name = local.shared_rg_name
 }
 
 data "azurerm_container_app_environment" "target" {
-  name                = var.container_env_name
-  resource_group_name = var.resource_group_name
+  name                = local.shared_container_env
+  resource_group_name = data.azurerm_resource_group.target.name
 }
 
 data "azurerm_container_registry" "target" {
-  name                = var.acr_name
-  resource_group_name = var.resource_group_name
+  name                = local.shared_acr_name
+  resource_group_name = data.azurerm_resource_group.target.name
 }
 
 resource "azurerm_container_app" "backend" {

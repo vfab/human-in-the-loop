@@ -1,5 +1,7 @@
 location                 = "westeurope"
 resource_group_name      = "rg-vfab"
+shared_remote_state_enabled = false
+shared_remote_state_path    = "/home/vfabro/src/rg-vfab-terraform/shared/terraform.tfstate"
 acr_name                 = "ca81b3cb0669acr"
 container_env_name       = "vfab-container-env"
 backend_name             = "vfab-hitl-backend"
