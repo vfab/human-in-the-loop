@@ -44,7 +44,7 @@ jobs:
           set -euo pipefail
           ACR_LOGIN_SERVER=$(az acr show --name "$ACR_NAME" --resource-group "$RESOURCE_GROUP_NAME" --query loginServer -o tsv)
           IMAGE="$ACR_LOGIN_SERVER/hitl-email-assistant:${GITHUB_SHA}"
-          az acr build --registry "$ACR_NAME" --image "hitl-email-assistant:${GITHUB_SHA}" .
+          az acr build --registry "$ACR_NAME" --image "hitl-email-assistant:${GITHUB_SHA}" --no-logs .
           echo "TF_VAR_container_image=$IMAGE" >> "$GITHUB_ENV"
 
       - name: Terraform Init
@@ -111,7 +111,7 @@ jobs:
           set -euo pipefail
           ACR_LOGIN_SERVER=$(az acr show --name "$ACR_NAME" --resource-group "$RESOURCE_GROUP_NAME" --query loginServer -o tsv)
           IMAGE="$ACR_LOGIN_SERVER/hitl-email-assistant:${GITHUB_SHA}"
-          az acr build --registry "$ACR_NAME" --image "hitl-email-assistant:${GITHUB_SHA}" .
+          az acr build --registry "$ACR_NAME" --image "hitl-email-assistant:${GITHUB_SHA}" --no-logs .
           echo "TF_VAR_container_image=$IMAGE" >> "$GITHUB_ENV"
 
       - name: Setup Terraform
