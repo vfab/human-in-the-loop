@@ -178,9 +178,7 @@ The workflow:
 4. Prints deployment outputs
 
 Required GitHub repository secrets:
-- `AZURE_CLIENT_ID`
-- `AZURE_TENANT_ID`
-- `AZURE_SUBSCRIPTION_ID`
+- `AZURE_CREDENTIALS`
 - `AZURE_OPENAI_API_KEY`
 
 Recommended GitHub repository variables:
