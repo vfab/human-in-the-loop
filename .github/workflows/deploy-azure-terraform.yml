@@ -2,17 +2,18 @@ name: Deploy Azure (Terraform)
 
 on:
   workflow_dispatch:
-  push:
-    branches:
-      - main
-    paths:
-      - "infra/**"
-      - "Dockerfile"
-      - "app_server.py"
-      - "requirements.txt"
-      - ".github/workflows/deploy-azure-terraform.yml"
+    inputs:
+      execution_mode:
+        description: "Deployment execution mode"
+        required: true
+        default: self-hosted
+        type: choice
+        options:
+          - self-hosted
+          - github-hosted-sp
 
 permissions:
+  id-token: write
   contents: read
 
 env:
@@ -25,7 +26,75 @@ env:
   FRONTEND_NAME: vfab-hitl-frontend
 
 jobs:
-  deploy:
+  deploy-self-hosted:
+    if: ${{ github.event.inputs.execution_mode == 'self-hosted' }}
+    runs-on: self-hosted
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Validate Azure CLI authentication
+        run: az account show -o table
+
+      - name: Build and push backend image
+        env:
+          GITHUB_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          az acr login --name "$ACR_NAME"
+          ACR_LOGIN_SERVER=$(az acr show --name "$ACR_NAME" --resource-group "$RESOURCE_GROUP_NAME" --query loginServer -o tsv)
+          IMAGE="$ACR_LOGIN_SERVER/hitl-email-assistant:${GITHUB_SHA}"
+          docker build -t "$IMAGE" .
+          docker push "$IMAGE"
+          echo "TF_VAR_container_image=$IMAGE" >> "$GITHUB_ENV"
+
+      - name: Terraform Init
+        working-directory: ${{ env.TF_WORKING_DIR }}
+        run: terraform init -input=false
+
+      - name: Terraform Validate
+        working-directory: ${{ env.TF_WORKING_DIR }}
+        run: terraform validate
+
+      - name: Terraform Plan
+        working-directory: ${{ env.TF_WORKING_DIR }}
+        env:
+          TF_VAR_resource_group_name: ${{ env.RESOURCE_GROUP_NAME }}
+          TF_VAR_location: ${{ env.AZURE_LOCATION }}
+          TF_VAR_frontend_location: ${{ env.AZURE_LOCATION }}
+          TF_VAR_acr_name: ${{ env.ACR_NAME }}
+          TF_VAR_container_env_name: ${{ env.CONTAINER_ENV_NAME }}
+          TF_VAR_backend_name: ${{ env.BACKEND_NAME }}
+          TF_VAR_frontend_name: ${{ env.FRONTEND_NAME }}
+          TF_VAR_azure_openai_endpoint: ${{ vars.AZURE_OPENAI_ENDPOINT }}
+          TF_VAR_azure_openai_chat_model: ${{ vars.AZURE_OPENAI_CHAT_MODEL }}
+          TF_VAR_azure_openai_api_version: ${{ vars.AZURE_OPENAI_API_VERSION }}
+          TF_VAR_azure_openai_api_key: ${{ secrets.AZURE_OPENAI_API_KEY }}
+        run: terraform plan -input=false -out=tfplan
+
+      - name: Terraform Apply
+        working-directory: ${{ env.TF_WORKING_DIR }}
+        env:
+          TF_VAR_resource_group_name: ${{ env.RESOURCE_GROUP_NAME }}
+          TF_VAR_location: ${{ env.AZURE_LOCATION }}
+          TF_VAR_frontend_location: ${{ env.AZURE_LOCATION }}
+          TF_VAR_acr_name: ${{ env.ACR_NAME }}
+          TF_VAR_container_env_name: ${{ env.CONTAINER_ENV_NAME }}
+          TF_VAR_backend_name: ${{ env.BACKEND_NAME }}
+          TF_VAR_frontend_name: ${{ env.FRONTEND_NAME }}
+          TF_VAR_azure_openai_endpoint: ${{ vars.AZURE_OPENAI_ENDPOINT }}
+          TF_VAR_azure_openai_chat_model: ${{ vars.AZURE_OPENAI_CHAT_MODEL }}
+          TF_VAR_azure_openai_api_version: ${{ vars.AZURE_OPENAI_API_VERSION }}
+          TF_VAR_azure_openai_api_key: ${{ secrets.AZURE_OPENAI_API_KEY }}
+        run: terraform apply -input=false -auto-approve tfplan
+
+      - name: Show Terraform outputs
+        working-directory: ${{ env.TF_WORKING_DIR }}
+        run: terraform output
+
+  deploy-github-hosted-sp:
+    if: ${{ github.event.inputs.execution_mode == 'github-hosted-sp' }}
     runs-on: ubuntu-latest
 
     steps:

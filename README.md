@@ -171,6 +171,10 @@ terraform apply tfplan
 
 Workflow file: `.github/workflows/deploy-azure-terraform.yml`
 
+The workflow supports two execution modes:
+1. `self-hosted` (recommended when you cannot grant service principal access)
+2. `github-hosted-sp` (uses `AZURE_CREDENTIALS` service principal secret)
+
 The workflow:
 1. Authenticates to Azure using OIDC
 2. Builds and pushes the backend Docker image to ACR
@@ -178,8 +182,8 @@ The workflow:
 4. Prints deployment outputs
 
 Required GitHub repository secrets:
-- `AZURE_CREDENTIALS`
 - `AZURE_OPENAI_API_KEY`
+- `AZURE_CREDENTIALS` (only for `github-hosted-sp` mode)
 
 Recommended GitHub repository variables:
 - `AZURE_OPENAI_ENDPOINT`
