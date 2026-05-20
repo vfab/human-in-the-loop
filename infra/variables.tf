@@ -10,6 +10,12 @@ variable "resource_group_name" {
   default     = "rg-vfab"
 }
 
+variable "name_prefix" {
+  description = "Deprecated compatibility variable retained for existing tfvars files."
+  type        = string
+  default     = ""
+}
+
 variable "shared_remote_state_enabled" {
   description = "When true, resolve shared foundation resource names from the shared stack Terraform state outputs."
   type        = bool
@@ -89,4 +95,27 @@ variable "azure_openai_api_key" {
   description = "Azure OpenAI API key."
   type        = string
   sensitive   = true
+}
+
+variable "acs_name" {
+  description = "Name of the Azure Communication Services resource."
+  type        = string
+  default     = "vfab-hitl-acs"
+}
+
+variable "acs_email_service_name" {
+  description = "Name of the Azure Communication Email service resource."
+  type        = string
+  default     = "vfab-hitl-email"
+}
+
+variable "acs_email_sender_address" {
+  description = "Sender address configured in Azure Communication Services Email domain (for example: DoNotReply@<domain>)."
+  type        = string
+}
+
+variable "acs_data_location" {
+  description = "Data location for ACS resources (for example: Europe, United States)."
+  type        = string
+  default     = "Europe"
 }

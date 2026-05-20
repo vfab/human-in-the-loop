@@ -24,8 +24,6 @@ Prerequisites:
 import asyncio
 import logging
 import os
-import smtplib
-from email.message import EmailMessage
 from typing import Any
 
 from agent_framework import (
@@ -37,6 +35,7 @@ from azure.identity import AzureCliCredential
 from agent_framework_orchestrations import AgentRequestInfoResponse, SequentialBuilder
 from dotenv import load_dotenv
 from agent_framework_openai import OpenAIChatCompletionClient
+from email_delivery import resolve_email_recipient, send_email_via_acs
 
 load_dotenv()
 
@@ -71,48 +70,18 @@ def _normalize_summary_lines(conversation_messages: list[Any], streamed_updates:
 
 
 def _resolve_email_recipient() -> tuple[str, str]:
-    recipient = os.getenv("EMAIL_RECIPIENT")
-    if recipient:
-        return recipient, "EMAIL_RECIPIENT"
-
-    recipient = os.getenv("GMAIL_SMTP_USER")
-    if recipient:
-        return recipient, "GMAIL_SMTP_USER fallback"
-
-    recipient = os.getenv("SMTP_USER")
-    if recipient:
-        return recipient, "SMTP_USER fallback"
-
-    raise ValueError("Missing recipient config. Set EMAIL_RECIPIENT, GMAIL_SMTP_USER, or SMTP_USER.")
+    return resolve_email_recipient()
 
 
 def send_summary_email_via_smtp(summary: str) -> str:
-    """Send the workflow summary to the configured recipient.
-
-    Returns:
-        Recipient email address used for delivery.
-    """
+    """Send the workflow summary to the configured recipient via Azure Communication Services Email."""
     recipient, recipient_source = _resolve_email_recipient()
-    smtp_user = os.getenv("GMAIL_SMTP_USER") or os.getenv("SMTP_USER")
-    smtp_password = os.getenv("GMAIL_SMTP_APP_PASSWORD") or os.getenv("SMTP_APP_PASSWORD")
-
-    if not smtp_user or not smtp_password:
-        raise ValueError(
-            "Missing SMTP config. Set GMAIL_SMTP_USER and GMAIL_SMTP_APP_PASSWORD (or SMTP_USER and SMTP_APP_PASSWORD)."
-        )
-
     logger.info("Sending email to: %s (%s)", recipient, recipient_source)
-
-    message = EmailMessage()
-    message["From"] = smtp_user
-    message["To"] = recipient
-    message["Subject"] = "Group Discussion Summary - AI Tools Adoption"
-    message.set_content(summary)
-
-    with smtplib.SMTP_SSL("smtp.gmail.com", 465) as smtp:
-        smtp.login(smtp_user, smtp_password)
-        smtp.send_message(message)
-
+    send_email_via_acs(
+        subject="Group Discussion Summary - AI Tools Adoption",
+        body=summary,
+        recipient=recipient,
+    )
     return recipient
 
 

@@ -34,6 +34,12 @@ Human-in-the-loop (HITL) workflows integrate AI agents with human decision-makin
    AZURE_OPENAI_ENDPOINT=https://<your-resource>.openai.azure.com/
    AZURE_OPENAI_API_KEY=<your-api-key>
    AZURE_OPENAI_CHAT_MODEL=<your-model-deployment-name>
+   EMAIL_RECIPIENT=<recipient@example.com>
+   ACS_EMAIL_SENDER_ADDRESS=DoNotReply@<your-domain>
+   # Preferred in Azure-hosted workloads:
+   ACS_ENDPOINT=https://<your-communication-service>.communication.azure.com/
+   # Local/dev fallback (if not using managed identity):
+   # ACS_CONNECTION_STRING=endpoint=https://...;accesskey=...
    # Optional fallback used by samples:
    # AZURE_OPENAI_MODEL=<your-model-deployment-name>
    ```
@@ -144,7 +150,10 @@ uvicorn app_server:app --reload
    docker run -p 8000:8000 \
      -e AZURE_OPENAI_ENDPOINT=$AZURE_OPENAI_ENDPOINT \
      -e AZURE_OPENAI_API_KEY=$AZURE_OPENAI_API_KEY \
-      -e AZURE_OPENAI_CHAT_MODEL=$AZURE_OPENAI_CHAT_MODEL \
+       -e AZURE_OPENAI_CHAT_MODEL=$AZURE_OPENAI_CHAT_MODEL \
+       -e EMAIL_RECIPIENT=$EMAIL_RECIPIENT \
+       -e ACS_EMAIL_SENDER_ADDRESS=$ACS_EMAIL_SENDER_ADDRESS \
+       -e ACS_CONNECTION_STRING=$ACS_CONNECTION_STRING \
      hitl-workflows:latest
    ```
 
@@ -153,6 +162,9 @@ uvicorn app_server:app --reload
 This repository includes Terraform infrastructure for deploying:
 - Backend API to Azure Container Apps
 - Frontend to Azure Static Web Apps
+- Azure Communication Services + Email domain for outbound email delivery
+
+Set `acs_data_location` in Terraform vars to a valid ACS geography such as `Europe` or `United States`.
 
 This repo manages app-level resources only.
 
@@ -172,6 +184,16 @@ terraform plan -out=tfplan
 terraform apply tfplan
 ```
 
+**Remote Terraform state (Azure Storage):**
+```bash
+cd infra
+terraform init -migrate-state \
+   -backend-config="resource_group_name=rg-vfab" \
+   -backend-config="storage_account_name=remotestate052026" \
+   -backend-config="container_name=human-in-the-loop-tfstate" \
+   -backend-config="key=human-in-the-loop/terraform.tfstate"
+```
+
 ### CI/CD Deployment (GitHub Actions)
 
 Workflow file: `.github/workflows/deploy-azure-terraform.yml`
@@ -188,12 +210,16 @@ The workflow:
 
 Required GitHub repository secrets:
 - `AZURE_OPENAI_API_KEY`
+- `ACS_EMAIL_SENDER_ADDRESS`
 - `AZURE_CREDENTIALS` (only for `github-hosted-sp` mode)
 
 Recommended GitHub repository variables:
 - `AZURE_OPENAI_ENDPOINT`
 - `AZURE_OPENAI_CHAT_MODEL`
 - `AZURE_OPENAI_API_VERSION`
+
+The Terraform deployment provisions ACS and injects its connection string into
+the backend Container App as `ACS_CONNECTION_STRING`.
 
 ## Repository Structure
 
@@ -259,6 +285,7 @@ async for event in workflow.run_stream():
 - **agent-framework-openai** ≥ 1.4.0 — Microsoft Agent Framework with OpenAI integration
 - **python-dotenv** ≥ 1.0.1 — Environment variable loading
 - **azure-identity** ≥ 1.17.1 — Azure authentication
+- **azure-communication-email** ≥ 1.0.0 — Azure Communication Services Email client
 - **fastapi** ≥ 0.112.0 — HTTP API framework
 - **uvicorn** ≥ 0.30.6 — ASGI server
 

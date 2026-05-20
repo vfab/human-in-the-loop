@@ -29,4 +29,4 @@ jobs:
           AZURE_OPENAI_ENDPOINT: https://example.openai.azure.com/
           AZURE_OPENAI_API_KEY: test-key
           AZURE_OPENAI_CHAT_MODEL: gpt-4o
-        run: python -m unittest -q tests/test_app_server.py
+        run: python -m unittest discover -s tests -p "test_*.py" -q

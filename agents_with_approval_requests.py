@@ -20,13 +20,12 @@ Show how to integrate email processing with an AI agent in a workflow.
 import asyncio
 import logging
 import os
-import smtplib
 from dataclasses import dataclass
-from email.message import EmailMessage
 
 from agent_framework_openai import OpenAIChatCompletionClient
 from azure.identity import AzureCliCredential
 from dotenv import load_dotenv
+from email_delivery import resolve_email_recipient, send_email_via_acs
 
 load_dotenv()
 
@@ -85,36 +84,8 @@ class EmailAssistant:
 
 
 def send_email_via_smtp(email: Email, body: str) -> None:
-    """Send the generated email response through Gmail SMTP."""
-    recipient = os.getenv("EMAIL_RECIPIENT") or os.getenv("GMAIL_SMTP_USER") or os.getenv("SMTP_USER")
-    recipient_source = (
-        "EMAIL_RECIPIENT"
-        if os.getenv("EMAIL_RECIPIENT")
-        else "GMAIL_SMTP_USER fallback"
-        if os.getenv("GMAIL_SMTP_USER")
-        else "SMTP_USER fallback"
-    )
-    smtp_user = os.getenv("GMAIL_SMTP_USER") or os.getenv("SMTP_USER")
-    smtp_password = os.getenv("GMAIL_SMTP_APP_PASSWORD") or os.getenv("SMTP_APP_PASSWORD")
-
-    if not recipient:
-        raise ValueError("Missing recipient config. Set EMAIL_RECIPIENT, GMAIL_SMTP_USER, or SMTP_USER.")
-    if not smtp_user or not smtp_password:
-        raise ValueError(
-            "Missing SMTP config. Set GMAIL_SMTP_USER and GMAIL_SMTP_APP_PASSWORD (or SMTP_USER and SMTP_APP_PASSWORD)."
-        )
-
-    logger.info("Sending email to: %s (%s)", recipient, recipient_source)
-
-    message = EmailMessage()
-    message["From"] = smtp_user
-    message["To"] = recipient
-    message["Subject"] = f"Re: {email.subject}"
-    message.set_content(body)
-
-    with smtplib.SMTP_SSL("smtp.gmail.com", 465) as smtp:
-        smtp.login(smtp_user, smtp_password)
-        smtp.send_message(message)
+    """Backward-compatible wrapper that now sends via Azure Communication Services Email."""
+    send_email_via_acs(subject=f"Re: {email.subject}", body=body, recipient=email.recipient)
 
 
 def request_human_approval(email: Email, draft_body: str) -> str | None:
@@ -197,15 +168,7 @@ async def main() -> None:
     # Create email assistant
     assistant = EmailAssistant(chat_client)
 
-    recipient_email = (
-        os.getenv("EMAIL_RECIPIENT")
-        or os.getenv("GMAIL_SMTP_USER")
-        or os.getenv("SMTP_USER")
-    )
-    if not recipient_email:
-        raise ValueError(
-            "Missing recipient config. Set EMAIL_RECIPIENT, GMAIL_SMTP_USER, or SMTP_USER in .env."
-        )
+    recipient_email, _ = resolve_email_recipient()
 
     # Create a sample email
     incoming_email = Email(

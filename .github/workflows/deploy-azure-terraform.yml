@@ -22,6 +22,10 @@ permissions:
 
 env:
   TF_WORKING_DIR: infra
+  TF_STATE_RESOURCE_GROUP: rg-vfab
+  TF_STATE_STORAGE_ACCOUNT: remotestate052026
+  TF_STATE_CONTAINER: human-in-the-loop-tfstate
+  TF_STATE_KEY: human-in-the-loop/terraform.tfstate
   AZURE_LOCATION: westeurope
   RESOURCE_GROUP_NAME: rg-vfab
   ACR_NAME: ca81b3cb0669acr
@@ -53,7 +57,13 @@ jobs:
 
       - name: Terraform Init
         working-directory: ${{ env.TF_WORKING_DIR }}
-        run: terraform init -input=false
+        run: |
+          terraform init -reconfigure -input=false \
+            -backend-config="resource_group_name=${TF_STATE_RESOURCE_GROUP}" \
+            -backend-config="storage_account_name=${TF_STATE_STORAGE_ACCOUNT}" \
+            -backend-config="container_name=${TF_STATE_CONTAINER}" \
+            -backend-config="key=${TF_STATE_KEY}" \
+            -backend-config="use_azuread_auth=true"
 
       - name: Terraform Import Existing Resources (idempotent)
         working-directory: ${{ env.TF_WORKING_DIR }}
@@ -89,6 +99,7 @@ jobs:
           TF_VAR_azure_openai_chat_model: ${{ vars.AZURE_OPENAI_CHAT_MODEL }}
           TF_VAR_azure_openai_api_version: ${{ vars.AZURE_OPENAI_API_VERSION }}
           TF_VAR_azure_openai_api_key: ${{ secrets.AZURE_OPENAI_API_KEY }}
+          TF_VAR_acs_email_sender_address: ${{ secrets.ACS_EMAIL_SENDER_ADDRESS }}
         run: terraform plan -input=false -out=tfplan
 
       - name: Terraform Apply
@@ -105,6 +116,7 @@ jobs:
           TF_VAR_azure_openai_chat_model: ${{ vars.AZURE_OPENAI_CHAT_MODEL }}
           TF_VAR_azure_openai_api_version: ${{ vars.AZURE_OPENAI_API_VERSION }}
           TF_VAR_azure_openai_api_key: ${{ secrets.AZURE_OPENAI_API_KEY }}
+          TF_VAR_acs_email_sender_address: ${{ secrets.ACS_EMAIL_SENDER_ADDRESS }}
         run: terraform apply -input=false -auto-approve tfplan
 
       - name: Show Terraform outputs
@@ -139,7 +151,13 @@ jobs:
 
       - name: Terraform Init
         working-directory: ${{ env.TF_WORKING_DIR }}
-        run: terraform init -input=false
+        run: |
+          terraform init -reconfigure -input=false \
+            -backend-config="resource_group_name=${TF_STATE_RESOURCE_GROUP}" \
+            -backend-config="storage_account_name=${TF_STATE_STORAGE_ACCOUNT}" \
+            -backend-config="container_name=${TF_STATE_CONTAINER}" \
+            -backend-config="key=${TF_STATE_KEY}" \
+            -backend-config="use_azuread_auth=true"
 
       - name: Terraform Import Existing Resources (idempotent)
         working-directory: ${{ env.TF_WORKING_DIR }}
@@ -175,6 +193,7 @@ jobs:
           TF_VAR_azure_openai_chat_model: ${{ vars.AZURE_OPENAI_CHAT_MODEL }}
           TF_VAR_azure_openai_api_version: ${{ vars.AZURE_OPENAI_API_VERSION }}
           TF_VAR_azure_openai_api_key: ${{ secrets.AZURE_OPENAI_API_KEY }}
+          TF_VAR_acs_email_sender_address: ${{ secrets.ACS_EMAIL_SENDER_ADDRESS }}
         run: terraform plan -input=false -out=tfplan
 
       - name: Terraform Apply
@@ -191,6 +210,7 @@ jobs:
           TF_VAR_azure_openai_chat_model: ${{ vars.AZURE_OPENAI_CHAT_MODEL }}
           TF_VAR_azure_openai_api_version: ${{ vars.AZURE_OPENAI_API_VERSION }}
           TF_VAR_azure_openai_api_key: ${{ secrets.AZURE_OPENAI_API_KEY }}
+          TF_VAR_acs_email_sender_address: ${{ secrets.ACS_EMAIL_SENDER_ADDRESS }}
         run: terraform apply -input=false -auto-approve tfplan
 
       - name: Show Terraform outputs

@@ -16,6 +16,29 @@ locals {
   shared_container_env = var.shared_remote_state_enabled ? data.terraform_remote_state.shared[0].outputs.container_env_name : var.container_env_name
 }
 
+resource "azurerm_email_communication_service" "email" {
+  name                = var.acs_email_service_name
+  resource_group_name = data.azurerm_resource_group.target.name
+  data_location       = var.acs_data_location
+}
+
+resource "azurerm_email_communication_service_domain" "managed" {
+  name             = "AzureManagedDomain"
+  email_service_id = azurerm_email_communication_service.email.id
+  domain_management = "AzureManaged"
+}
+
+resource "azurerm_communication_service" "acs" {
+  name                = var.acs_name
+  resource_group_name = data.azurerm_resource_group.target.name
+  data_location       = var.acs_data_location
+}
+
+resource "azurerm_communication_service_email_domain_association" "managed" {
+  communication_service_id = azurerm_communication_service.acs.id
+  email_service_domain_id  = azurerm_email_communication_service_domain.managed.id
+}
+
 data "azurerm_resource_group" "target" {
   name = local.shared_rg_name
 }
@@ -50,6 +73,11 @@ resource "azurerm_container_app" "backend" {
   secret {
     name  = "azure-openai-api-key"
     value = var.azure_openai_api_key
+  }
+
+  secret {
+    name  = "acs-connection-string"
+    value = azurerm_communication_service.acs.primary_connection_string
   }
 
   ingress {
@@ -90,6 +118,16 @@ resource "azurerm_container_app" "backend" {
       env {
         name        = "AZURE_OPENAI_API_KEY"
         secret_name = "azure-openai-api-key"
+      }
+
+      env {
+        name  = "ACS_EMAIL_SENDER_ADDRESS"
+        value = var.acs_email_sender_address
+      }
+
+      env {
+        name        = "ACS_CONNECTION_STRING"
+        secret_name = "acs-connection-string"
       }
     }
   }

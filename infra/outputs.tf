@@ -13,3 +13,14 @@ output "acr_login_server" {
   value       = data.azurerm_container_registry.target.login_server
   description = "ACR login server used for backend image pushes."
 }
+
+output "acs_connection_string" {
+  value       = azurerm_communication_service.acs.primary_connection_string
+  description = "Primary connection string for Azure Communication Services."
+  sensitive   = true
+}
+
+output "acs_sender_address" {
+  value       = var.acs_email_sender_address
+  description = "Configured sender address used by the backend app."
+}
