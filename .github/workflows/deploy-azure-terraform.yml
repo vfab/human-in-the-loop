@@ -51,6 +51,14 @@ jobs:
         working-directory: ${{ env.TF_WORKING_DIR }}
         run: terraform init -input=false
 
+      - name: Terraform Import Existing Resources (idempotent)
+        working-directory: ${{ env.TF_WORKING_DIR }}
+        run: |
+          set -euo pipefail
+          SUBSCRIPTION_ID=$(az account show --query id -o tsv | tr -d '\r')
+          terraform import -input=false azurerm_container_app.backend "/subscriptions/${SUBSCRIPTION_ID}/resourceGroups/${RESOURCE_GROUP_NAME}/providers/Microsoft.App/containerApps/${BACKEND_NAME}" || true
+          terraform import -input=false azurerm_static_web_app.frontend "/subscriptions/${SUBSCRIPTION_ID}/resourceGroups/${RESOURCE_GROUP_NAME}/providers/Microsoft.Web/staticSites/${FRONTEND_NAME}" || true
+
       - name: Terraform Validate
         working-directory: ${{ env.TF_WORKING_DIR }}
         run: terraform validate
@@ -120,6 +128,14 @@ jobs:
       - name: Terraform Init
         working-directory: ${{ env.TF_WORKING_DIR }}
         run: terraform init -input=false
+
+      - name: Terraform Import Existing Resources (idempotent)
+        working-directory: ${{ env.TF_WORKING_DIR }}
+        run: |
+          set -euo pipefail
+          SUBSCRIPTION_ID=$(az account show --query id -o tsv | tr -d '\r')
+          terraform import -input=false azurerm_container_app.backend "/subscriptions/${SUBSCRIPTION_ID}/resourceGroups/${RESOURCE_GROUP_NAME}/providers/Microsoft.App/containerApps/${BACKEND_NAME}" || true
+          terraform import -input=false azurerm_static_web_app.frontend "/subscriptions/${SUBSCRIPTION_ID}/resourceGroups/${RESOURCE_GROUP_NAME}/providers/Microsoft.Web/staticSites/${FRONTEND_NAME}" || true
 
       - name: Terraform Validate
         working-directory: ${{ env.TF_WORKING_DIR }}
