@@ -1,58 +1,32 @@
-resource "random_string" "suffix" {
-  length  = 6
-  upper   = false
-  special = false
+data "azurerm_resource_group" "target" {
+  name = var.resource_group_name
 }
 
-locals {
-  # ACR names must be globally unique and alphanumeric only.
-  acr_name = substr(lower(replace("${var.name_prefix}${random_string.suffix.result}", "-", "")), 0, 20)
-  app_name = "${var.name_prefix}-email-assistant"
+data "azurerm_container_app_environment" "target" {
+  name                = var.container_env_name
+  resource_group_name = var.resource_group_name
 }
 
-resource "azurerm_resource_group" "this" {
-  name     = var.resource_group_name
-  location = var.location
+data "azurerm_container_registry" "target" {
+  name                = var.acr_name
+  resource_group_name = var.resource_group_name
 }
 
-resource "azurerm_log_analytics_workspace" "this" {
-  name                = "${var.name_prefix}-law-${random_string.suffix.result}"
-  location            = azurerm_resource_group.this.location
-  resource_group_name = azurerm_resource_group.this.name
-  sku                 = "PerGB2018"
-  retention_in_days   = 30
-}
-
-resource "azurerm_container_app_environment" "this" {
-  name                       = "${var.name_prefix}-cae-${random_string.suffix.result}"
-  location                   = azurerm_resource_group.this.location
-  resource_group_name        = azurerm_resource_group.this.name
-  log_analytics_workspace_id = azurerm_log_analytics_workspace.this.id
-}
-
-resource "azurerm_container_registry" "this" {
-  name                = local.acr_name
-  location            = azurerm_resource_group.this.location
-  resource_group_name = azurerm_resource_group.this.name
-  sku                 = "Basic"
-  admin_enabled       = true
-}
-
-resource "azurerm_container_app" "this" {
-  name                         = local.app_name
-  container_app_environment_id = azurerm_container_app_environment.this.id
-  resource_group_name          = azurerm_resource_group.this.name
+resource "azurerm_container_app" "backend" {
+  name                         = var.backend_name
+  resource_group_name          = data.azurerm_resource_group.target.name
+  container_app_environment_id = data.azurerm_container_app_environment.target.id
   revision_mode                = "Single"
 
   registry {
-    server               = azurerm_container_registry.this.login_server
-    username             = azurerm_container_registry.this.admin_username
+    server               = data.azurerm_container_registry.target.login_server
+    username             = data.azurerm_container_registry.target.admin_username
     password_secret_name = "acr-admin-password"
   }
 
   secret {
     name  = "acr-admin-password"
-    value = azurerm_container_registry.this.admin_password
+    value = data.azurerm_container_registry.target.admin_password
   }
 
   secret {
@@ -72,10 +46,10 @@ resource "azurerm_container_app" "this" {
 
   template {
     min_replicas = 1
-    max_replicas = 1
+    max_replicas = 2
 
     container {
-      name   = "email-assistant"
+      name   = "backend"
       image  = var.container_image
       cpu    = var.container_cpu
       memory = var.container_memory
@@ -101,6 +75,12 @@ resource "azurerm_container_app" "this" {
       }
     }
   }
+}
 
-  depends_on = [azurerm_container_registry.this]
+resource "azurerm_static_web_app" "frontend" {
+  name                = var.frontend_name
+  resource_group_name = data.azurerm_resource_group.target.name
+  location            = var.frontend_location
+  sku_tier            = "Standard"
+  sku_size            = "Standard"
 }

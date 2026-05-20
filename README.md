@@ -148,29 +148,45 @@ uvicorn app_server:app --reload
      hitl-workflows:latest
    ```
 
-### Azure Container Apps Deployment
+### Azure Deployment with Terraform
 
-The repository includes Terraform infrastructure for deploying to Azure Container Apps.
+This repository includes Terraform infrastructure for deploying:
+- Backend API to Azure Container Apps
+- Frontend to Azure Static Web Apps
 
-**Deploy:**
+The Terraform code is designed to use existing shared resources in `rg-vfab`:
+- ACR: `ca81b3cb0669acr`
+- Container Apps environment: `vfab-container-env`
+
+**Manual deploy:**
 ```bash
 cd infra
 terraform init
+terraform validate
 terraform plan -out=tfplan
 terraform apply tfplan
 ```
 
-**Infrastructure includes:**
-- Container Apps environment
-- Azure Container Registry (ACR)
-- Log Analytics workspace
-- Managed Identity for secure authentication
-- Configuration for environment variables
+### CI/CD Deployment (GitHub Actions)
 
-**Update deployment variable:**
-```bash
-terraform apply -var="image_tag=<new-tag>"
-```
+Workflow file: `.github/workflows/deploy-azure-terraform.yml`
+
+The workflow:
+1. Authenticates to Azure using OIDC
+2. Builds and pushes the backend Docker image to ACR
+3. Runs `terraform init`, `terraform validate`, `terraform plan`, and `terraform apply`
+4. Prints deployment outputs
+
+Required GitHub repository secrets:
+- `AZURE_CLIENT_ID`
+- `AZURE_TENANT_ID`
+- `AZURE_SUBSCRIPTION_ID`
+- `AZURE_OPENAI_API_KEY`
+
+Recommended GitHub repository variables:
+- `AZURE_OPENAI_ENDPOINT`
+- `AZURE_OPENAI_CHAT_MODEL`
+- `AZURE_OPENAI_API_VERSION`
 
 ## Repository Structure
 
@@ -187,12 +203,14 @@ terraform apply -var="image_tag=<new-tag>"
 ├── .env                                   # Environment variables (not committed)
 ├── .env.example                           # Example environment configuration
 ├── .gitignore                             # Git ignore rules
+├── .github/workflows/                     # CI/CD workflows
+│   ├── python-tests.yml                   # Unit test workflow
+│   └── deploy-azure-terraform.yml         # Terraform deployment workflow
 ├── infra/                                 # Terraform infrastructure code
 │   ├── main.tf                            # Main infrastructure resources
 │   ├── variables.tf                       # Variable definitions
 │   ├── outputs.tf                         # Output values
 │   ├── providers.tf                       # Provider configuration
-│   ├── terraform.tfvars                   # Terraform variable values
 │   └── terraform.tfvars.example           # Example variable values
 └── .specify/                              # Spec Kit configuration
     └── extensions/git/                    # Git branching workflow extension

@@ -1,19 +1,43 @@
 variable "location" {
   description = "Azure region for all resources."
   type        = string
-  default     = "eastus"
+  default     = "westeurope"
 }
 
 variable "resource_group_name" {
-  description = "Resource group name for Container Apps deployment."
+  description = "The name of the resource group to deploy into."
   type        = string
-  default     = "rg-hitl-aca"
+  default     = "rg-vfab"
 }
 
-variable "name_prefix" {
-  description = "Prefix used in Azure resource names."
+variable "acr_name" {
+  description = "Name of the Azure Container Registry."
   type        = string
-  default     = "hitl"
+  default     = "ca81b3cb0669acr"
+}
+
+variable "container_env_name" {
+  description = "Name of the Container Apps Environment."
+  type        = string
+  default     = "vfab-container-env"
+}
+
+variable "frontend_location" {
+  description = "Location for Static Web App."
+  type        = string
+  default     = "westeurope"
+}
+
+variable "backend_name" {
+  description = "Name of the Container App for backend API."
+  type        = string
+  default     = "vfab-hitl-backend"
+}
+
+variable "frontend_name" {
+  description = "Name of the Static Web App for frontend UI."
+  type        = string
+  default     = "vfab-hitl-frontend"
 }
 
 variable "container_image" {
