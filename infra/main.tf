@@ -1,3 +1,7 @@
+# App-level infrastructure only.
+# Shared rg-vfab foundation resources (RG/ACR/Container Apps Environment/Log Analytics)
+# are managed in ~/src/rg-vfab-terraform/shared.
+
 data "azurerm_resource_group" "target" {
   name = var.resource_group_name
 }

@@ -154,6 +154,11 @@ This repository includes Terraform infrastructure for deploying:
 - Backend API to Azure Container Apps
 - Frontend to Azure Static Web Apps
 
+This repo manages app-level resources only.
+
+Shared `rg-vfab` foundation resources are managed centrally in:
+- `/home/vfabro/src/rg-vfab-terraform/shared`
+
 The Terraform code is designed to use existing shared resources in `rg-vfab`:
 - ACR: `ca81b3cb0669acr`
 - Container Apps environment: `vfab-container-env`
