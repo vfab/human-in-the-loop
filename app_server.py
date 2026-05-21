@@ -91,6 +91,8 @@ class _LegacyEmailAssistant:
 
 
 _legacy_assistant = _LegacyEmailAssistant(OpenAIChatClient())
+# Public alias kept for backward compatibility with tests
+assistant = _legacy_assistant
 
 
 @app.get("/health")
@@ -551,6 +553,7 @@ async def root() -> dict:
         "name": "HITL Workflow Server",
         "version": "2.0.0",
         "workflows": ["sequential", "concurrent", "group-chat", "guessing-game", "email-approval"],
+        "endpoints": ["POST /run", "POST /workflows/{wf}/start", "GET /workflows/{run_id}", "POST /workflows/{run_id}/respond"],
     }
 
 
