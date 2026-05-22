@@ -13,6 +13,8 @@ import uuid
 from typing import Any, Literal
 
 from fastapi import FastAPI, HTTPException
+from fastapi.responses import FileResponse
+from pathlib import Path
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
@@ -217,8 +219,16 @@ def _extract_output_text(data: Any) -> str:
     if hasattr(data, "text"):
         return data.text or ""
     if isinstance(data, list):
-        return "\n".join(item.text for item in data if hasattr(item, "text") and item.text)
+        return "".join(item.text for item in data if hasattr(item, "text") and item.text)
     return str(data)
+
+
+def _safe_source_id(event: Any) -> str:
+    """Return the source executor ID without raising if the property is unavailable."""
+    try:
+        return event.source_executor_id or "agent"
+    except Exception:  # noqa: BLE001
+        return "agent"
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -261,7 +271,7 @@ async def _hitl_loop(
                     continue
 
                 if event.type == "request_info":
-                    agent_id = getattr(event, "source_executor_id", None) or "agent"
+                    agent_id = _safe_source_id(event)
                     prompt = _extract_request_prompt(event.data)
                     agent_text = _extract_agent_text(event.data)
 
@@ -306,8 +316,16 @@ async def _hitl_loop(
                 elif event.type == "output":
                     text = _extract_output_text(event.data)
                     if text:
-                        author = getattr(event, "source_executor_id", None) or "agent"
-                        run.messages.append({"role": "agent", "author": author, "content": text})
+                        author = _safe_source_id(event)
+                        # Accumulate streaming tokens from the same agent into one bubble.
+                        if (
+                            run.messages
+                            and run.messages[-1]["role"] == "agent"
+                            and run.messages[-1]["author"] == author
+                        ):
+                            run.messages[-1]["content"] += text
+                        else:
+                            run.messages.append({"role": "agent", "author": author, "content": text})
 
                 elif event.type == "status" and getattr(event, "state", None) == WorkflowRunState.IDLE:
                     run.status = "completed"
@@ -338,12 +356,8 @@ async def _run_sequential(run: WorkflowRun, topic: str) -> None:
             "Incorporate any human feedback provided."
         ),
     )
-    finalizer = client.as_agent(
-        name="finalizer",
-        instructions="You are a finalizer. Polish the edited content into a publication-ready final version.",
-    )
     workflow = (
-        SequentialBuilder(participants=[drafter, editor, finalizer])
+        SequentialBuilder(participants=[drafter, editor])
         .with_request_info(agents=["editor"])
         .build()
     )
@@ -449,6 +463,251 @@ async def _run_guessing_game(run: WorkflowRun) -> None:
     await _hitl_loop(run, workflow, "start", use_raw_responses=True)
 
 
+async def _run_invoice_approval(
+    run: WorkflowRun,
+    vendor: str,
+    amount: float,
+    invoice_date_str: str,
+) -> None:
+    """Generate a mock invoice then auto-approve or escalate based on App Config rules."""
+    from datetime import date  # noqa: PLC0415
+
+    from invoice_workflow import InvoiceConfig, evaluate_invoice, load_invoice_config  # noqa: PLC0415
+
+    try:
+        # Parse and default the invoice date
+        if invoice_date_str:
+            try:
+                invoice_date = date.fromisoformat(invoice_date_str)
+            except ValueError:
+                run.error = f"Invalid date '{invoice_date_str}'. Use YYYY-MM-DD."
+                run.status = "error"
+                return
+        else:
+            invoice_date = date.today()
+            invoice_date_str = invoice_date.isoformat()
+
+        config: InvoiceConfig = load_invoice_config()
+
+        run.messages.append({
+            "role": "system", "author": "system",
+            "content": (
+                f"Processing invoice — Vendor: {vendor}, "
+                f"Amount: ${amount:,.2f}, Date: {invoice_date_str}"
+            ),
+        })
+
+        # AI agent generates a realistic invoice document
+        client = _create_openai_client()
+        agent = client.as_agent(
+            name="Invoice Agent",
+            instructions=(
+                "You are an invoice processing assistant. "
+                "Generate a professional, realistic invoice document. "
+                "Include: invoice number (INV-XXXXX format), vendor name and address, "
+                "bill-to details, itemised line items whose subtotals match the total, "
+                "payment terms (Net-30), and a brief description of services rendered. "
+                "Format the output as a clean plain-text invoice."
+            ),
+        )
+        response = await agent.run(
+            f"Generate a professional invoice:\n"
+            f"- Vendor: {vendor}\n"
+            f"- Total Amount: ${amount:,.2f}\n"
+            f"- Invoice Date: {invoice_date_str}\n"
+            f"- Bill To: Contoso Ltd., 123 Enterprise Blvd, Seattle WA 98101"
+        )
+        invoice_text = response.text
+        run.messages.append({"role": "agent", "author": "Invoice Agent", "content": invoice_text})
+
+        # Evaluate auto-approval conditions deterministically
+        eval_result = evaluate_invoice(vendor, amount, invoice_date, config)
+
+        if eval_result["can_auto_approve"]:
+            run.messages.append({
+                "role": "system", "author": "system",
+                "content": (
+                    f"✓ Auto-approved: vendor is recognised, "
+                    f"amount is within the ${config.cost_limit:,.0f} limit, "
+                    f"and invoice is within the {config.days_limit}-day window."
+                ),
+            })
+            run.result = f"Invoice auto-approved — ${amount:,.2f} from {vendor}."
+            run.status = "completed"
+        else:
+            reasons_text = "; ".join(eval_result["reasons"])
+            run.messages.append({
+                "role": "system", "author": "system",
+                "content": f"Manual review required: {reasons_text}.",
+            })
+
+            run.pending_request_id = str(uuid.uuid4())
+            run.pending_prompt = (
+                f"Review required:\n• {chr(10).join('• ' + r for r in eval_result['reasons'])}\n\n"
+                "Approve or reject this invoice?"
+            )
+            run.pending_agent = "Invoice Agent"
+            run.status = "waiting_input"
+
+            await run._response_ready.wait()
+            run._response_ready.clear()
+
+            decision = (run._human_response or "").strip().lower()
+            run.pending_request_id = None
+            run.pending_prompt = None
+            run.pending_agent = None
+            run.status = "running"
+
+            run.messages.append({
+                "role": "human", "author": "you",
+                "content": run._human_response or "(approved)",
+            })
+
+            if decision in ("reject", "rejected", "no", "deny", "denied"):
+                run.messages.append({
+                    "role": "system", "author": "system",
+                    "content": "Invoice rejected by reviewer. Not processed.",
+                })
+                run.result = f"Invoice rejected — ${amount:,.2f} from {vendor}."
+            else:
+                note = (
+                    f" — Note: {run._human_response}"
+                    if run._human_response and decision not in ("approve", "approved", "yes", "ok")
+                    else ""
+                )
+                run.messages.append({
+                    "role": "system", "author": "system",
+                    "content": f"Invoice approved by reviewer.{note}",
+                })
+                run.result = f"Invoice approved — ${amount:,.2f} from {vendor}."
+
+            run.status = "completed"
+
+    except Exception as exc:  # noqa: BLE001
+        logger.exception("Invoice approval workflow failed")
+        run.error = str(exc)
+        run.status = "error"
+
+
+async def _run_support_ticket(
+    run: WorkflowRun,
+    customer: str,
+    issue: str,
+) -> None:
+    """Classify a support ticket and auto-resolve simple cases; escalate the rest."""
+    from support_ticket_workflow import (  # noqa: PLC0415
+        TICKET_CATEGORIES,
+        detect_escalation_keywords,
+        load_support_config,
+        parse_agent_classification,
+    )
+
+    try:
+        config = load_support_config()
+
+        snippet = issue[:80] + ("…" if len(issue) > 80 else "")
+        run.messages.append({
+            "role": "system", "author": "system",
+            "content": f"Support ticket received from {customer}: {snippet}",
+        })
+
+        # AI agent classifies and drafts a resolution
+        client = _create_openai_client()
+        categories_list = ", ".join(TICKET_CATEGORIES.keys())
+        agent = client.as_agent(
+            name="Support Agent",
+            instructions=(
+                "You are a customer support AI. Analyse the support ticket and respond "
+                "using this exact format (no extra text before CATEGORY):\n\n"
+                f"CATEGORY: <one of: {categories_list}>\n"
+                "COMPLEXITY: <integer 1-5 where 1=trivial, 5=very complex>\n"
+                "RESOLUTION:\n"
+                "<your full resolution response addressed directly to the customer>"
+            ),
+        )
+        response = await agent.run(f"Customer: {customer}\nIssue: {issue}")
+        ai_output = response.text
+
+        category, complexity, resolution = parse_agent_classification(ai_output)
+        cat_label = TICKET_CATEGORIES.get(category, category)
+
+        run.messages.append({
+            "role": "agent", "author": "Support Agent",
+            "content": (
+                f"Category: {cat_label}\n"
+                f"Complexity: {complexity}/5\n\n"
+                f"Proposed resolution:\n{resolution}"
+            ),
+        })
+
+        # Determine routing
+        escalation_hits = detect_escalation_keywords(issue, config)
+        needs_human = (
+            category not in config["auto_resolve_categories"]
+            or complexity > 2
+            or len(escalation_hits) > 0
+        )
+
+        if not needs_human:
+            run.messages.append({
+                "role": "system", "author": "system",
+                "content": (
+                    f"✓ Auto-resolved: '{cat_label}' tickets are handled automatically "
+                    f"(complexity {complexity}/5)."
+                ),
+            })
+            run.result = f"Ticket auto-resolved for {customer}."
+            run.status = "completed"
+        else:
+            triggers: list[str] = []
+            if category not in config["auto_resolve_categories"]:
+                triggers.append(f"category '{cat_label}' requires human handling")
+            if complexity > 2:
+                triggers.append(f"complexity rated {complexity}/5")
+            if escalation_hits:
+                triggers.append(f"escalation keywords detected: {', '.join(escalation_hits)}")
+
+            reason_text = "; ".join(triggers)
+            run.messages.append({
+                "role": "system", "author": "system",
+                "content": f"Escalated to human: {reason_text}.",
+            })
+
+            run.pending_request_id = str(uuid.uuid4())
+            run.pending_prompt = (
+                f"Escalated — {reason_text}\n\n"
+                "Approve the AI resolution, or type a custom response to send to the customer."
+            )
+            run.pending_agent = "Support Agent"
+            run.status = "waiting_input"
+
+            await run._response_ready.wait()
+            run._response_ready.clear()
+
+            custom = (run._human_response or "").strip()
+            run.pending_request_id = None
+            run.pending_prompt = None
+            run.pending_agent = None
+            run.status = "running"
+
+            run.messages.append({
+                "role": "human", "author": "you",
+                "content": custom if custom else "(approved AI resolution)",
+            })
+            final_response = custom if custom else resolution
+            run.messages.append({
+                "role": "system", "author": "system",
+                "content": f"Resolution sent to {customer}.",
+            })
+            run.result = f"Ticket resolved for {customer} (human-reviewed)."
+            run.status = "completed"
+
+    except Exception as exc:  # noqa: BLE001
+        logger.exception("Support ticket workflow failed")
+        run.error = str(exc)
+        run.status = "error"
+
+
 async def _run_email_approval(
     run: WorkflowRun,
     sender: str,
@@ -539,6 +798,20 @@ class StartEmailApprovalReq(BaseModel):
     )
 
 
+class StartInvoiceApprovalReq(BaseModel):
+    vendor: str = "Microsoft"
+    amount: float = 750.0
+    invoice_date: str = ""  # YYYY-MM-DD; empty defaults to today
+
+
+class StartSupportTicketReq(BaseModel):
+    customer: str = "Alice Johnson"
+    issue: str = (
+        "I can't log into my account. "
+        "I've tried resetting my password three times but keep getting an error."
+    )
+
+
 class RespondReq(BaseModel):
     response: str
 
@@ -548,7 +821,10 @@ class RespondReq(BaseModel):
 # ─────────────────────────────────────────────────────────────────────────────
 
 @app.get("/")
-async def root() -> dict:
+async def root():
+    frontend = Path(__file__).parent / "frontend" / "index.html"
+    if frontend.exists():
+        return FileResponse(frontend, media_type="text/html")
     return {
         "name": "HITL Workflow Server",
         "version": "2.0.0",
@@ -589,6 +865,20 @@ async def start_guessing_game() -> dict:
 async def start_email_approval(req: StartEmailApprovalReq) -> dict:
     run = _new_run("email-approval")
     asyncio.create_task(_run_email_approval(run, req.sender, req.subject, req.body))
+    return _run_to_dict(run)
+
+
+@app.post("/workflows/invoice-approval/start")
+async def start_invoice_approval(req: StartInvoiceApprovalReq) -> dict:
+    run = _new_run("invoice-approval")
+    asyncio.create_task(_run_invoice_approval(run, req.vendor, req.amount, req.invoice_date))
+    return _run_to_dict(run)
+
+
+@app.post("/workflows/support-ticket/start")
+async def start_support_ticket(req: StartSupportTicketReq) -> dict:
+    run = _new_run("support-ticket")
+    asyncio.create_task(_run_support_ticket(run, req.customer, req.issue))
     return _run_to_dict(run)
 
 

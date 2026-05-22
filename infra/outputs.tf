@@ -24,3 +24,8 @@ output "acs_sender_address" {
   value       = var.acs_email_sender_address
   description = "Configured sender address used by the backend app."
 }
+
+output "app_config_endpoint" {
+  value       = azurerm_app_configuration.config.endpoint
+  description = "Azure App Configuration endpoint used by the backend."
+}

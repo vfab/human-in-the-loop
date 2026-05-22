@@ -3,5 +3,6 @@ agent-framework-orchestrations>=1.0.0b0
 python-dotenv>=1.0.1
 azure-identity>=1.17.1
 azure-communication-email>=1.0.0
+azure-appconfiguration>=1.5.0
 fastapi>=0.112.0
 uvicorn[standard]>=0.30.6

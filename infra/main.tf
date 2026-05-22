@@ -80,6 +80,10 @@ resource "azurerm_container_app" "backend" {
     value = azurerm_communication_service.acs.primary_connection_string
   }
 
+  identity {
+    type = "SystemAssigned"
+  }
+
   ingress {
     external_enabled = true
     target_port      = 8000
@@ -129,6 +133,11 @@ resource "azurerm_container_app" "backend" {
         name        = "ACS_CONNECTION_STRING"
         secret_name = "acs-connection-string"
       }
+
+      env {
+        name  = "AZURE_APP_CONFIG_ENDPOINT"
+        value = azurerm_app_configuration.config.endpoint
+      }
     }
   }
 }
@@ -140,3 +149,23 @@ resource "azurerm_static_web_app" "frontend" {
   sku_tier            = "Standard"
   sku_size            = "Standard"
 }
+
+# ─── Azure App Configuration ───────────────────────────────────────────────
+
+resource "azurerm_app_configuration" "config" {
+  name                = var.app_config_name
+  resource_group_name = data.azurerm_resource_group.target.name
+  location            = var.location
+  sku                 = "free"
+}
+
+# Role assignment is managed manually via az CLI (requires Owner/UAA privileges)
+# az role assignment create --role "App Configuration Data Reader" \
+#   --assignee <principal_id> --scope <app_config_id>
+
+# App Configuration keys are managed via az CLI (avoids slow Terraform provider):
+# az appconfig kv set --name vfab-hitl-appconfig --key hitl/invoice/cost-limit --value "1000" --yes
+# az appconfig kv set --name vfab-hitl-appconfig --key hitl/invoice/days-limit --value "30" --yes
+# az appconfig kv set --name vfab-hitl-appconfig --key hitl/invoice/approved-vendors --value '[...]' --yes
+# az appconfig kv set --name vfab-hitl-appconfig --key hitl/support/auto-resolve-categories --value '[...]' --yes
+# az appconfig kv set --name vfab-hitl-appconfig --key hitl/support/escalation-keywords --value '[...]' --yes

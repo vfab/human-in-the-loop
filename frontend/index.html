@@ -210,7 +210,7 @@
           <span class="icon">📝</span>
           <div>
             <div class="label">Sequential Review</div>
-            <div class="desc">Drafter → steer the editor → finalizer produces polished output</div>
+            <div class="desc">Drafter writes a draft; you review the editor&#39;s revision and approve or steer it</div>
           </div>
         </button>
         <button class="wf-btn" data-wf="concurrent">
@@ -232,6 +232,20 @@
           <div>
             <div class="label">Guessing Game</div>
             <div class="desc">Agent guesses 1–100; guide it with higher / lower / correct</div>
+          </div>
+        </button>
+        <button class="wf-btn" data-wf="invoice-approval">
+          <span class="icon">🧾</span>
+          <div>
+            <div class="label">Invoice Approval</div>
+            <div class="desc">AI auto-approves known vendors under the configured limit; outliers go to you</div>
+          </div>
+        </button>
+        <button class="wf-btn" data-wf="support-ticket">
+          <span class="icon">🎫</span>
+          <div>
+            <div class="label">Support Ticket</div>
+            <div class="desc">AI resolves simple tickets automatically; complex or sensitive cases escalate to you</div>
           </div>
         </button>
       </nav>
@@ -262,7 +276,11 @@
       </main>
     </div>
     <script>
-      const BACKEND = "https://vfab-hitl-backend.ambitiousmoss-ad0cb2f3.eastus.azurecontainerapps.io";
+      // When served from the FastAPI server locally (localhost), use same-origin relative URLs.
+      // When served from the Azure Static Web App, point to the deployed backend.
+      const BACKEND = (window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1")
+        ? ""
+        : "https://vfab-hitl-backend.ambitiousmoss-ad0cb2f3.eastus.azurecontainerapps.io";
       const POLL_MS = 1800;
       const WORKFLOWS = {
         "email-approval": {
@@ -278,7 +296,7 @@
         },
         "sequential": {
           title: "Sequential Document Review",
-          desc: "A drafter produces a first draft; you steer the editor before the finalizer polishes the document.",
+          desc: "A drafter produces a first draft; you review the editor&#39;s improved version and can provide feedback or approve it — your approval is the final output.",
           startEndpoint: "/workflows/sequential/start",
           inputType: "feedback",
           fields: [{ id: "topic", label: "Topic", type: "input", default: "Write a brief introduction to artificial intelligence." }],
@@ -303,6 +321,27 @@
           startEndpoint: "/workflows/guessing-game/start",
           inputType: "guessing",
           fields: [],
+        },
+        "invoice-approval": {
+          title: "Invoice Processing & Approval",
+          desc: "AI generates a mock invoice and auto-approves it when the vendor is recognised, the amount is under the configured limit, and the date is recent. Thresholds and the approved-vendor list are read from Azure App Configuration.",
+          startEndpoint: "/workflows/invoice-approval/start",
+          inputType: "invoice-approval",
+          fields: [
+            { id: "vendor",       label: "Vendor",        type: "input", default: "Microsoft" },
+            { id: "amount",       label: "Amount ($)",     type: "input", default: "750.00" },
+            { id: "invoice_date", label: "Invoice Date",   type: "date",  default: "" },
+          ],
+        },
+        "support-ticket": {
+          title: "Automated Support Ticket Escalation",
+          desc: "AI classifies the ticket by category and complexity. Simple, routine tickets are auto-resolved. Complex or sensitive issues — or those matching escalation keywords — are escalated to you for review.",
+          startEndpoint: "/workflows/support-ticket/start",
+          inputType: "support-ticket",
+          fields: [
+            { id: "customer", label: "Customer",          type: "input",    default: "Alice Johnson" },
+            { id: "issue",    label: "Issue Description", type: "textarea", default: "I can't log into my account. I've tried resetting my password three times but keep getting an error." },
+          ],
         },
       };
       let currentWf = null, currentRunId = null, polling = false, renderedMsgs = 0;
@@ -341,6 +380,7 @@
       }
 
       function renderStartForm(meta) {
+        startForm.style.display = "";
         startForm.innerHTML = "";
         meta.fields.forEach(f => {
           const wrap = document.createElement("div");
@@ -350,9 +390,15 @@
           lbl.textContent = f.label;
           wrap.appendChild(lbl);
           let el = f.type === "textarea" ? document.createElement("textarea") : document.createElement("input");
-          if (f.type === "textarea") el.rows = 3; else el.type = "text";
+          if (f.type === "textarea") {
+            el.rows = 2;
+          } else if (f.type === "date") {
+            el.type = "date";
+          } else {
+            el.type = "text";
+          }
           el.id = "sf-" + f.id;
-          el.value = f.default;
+          el.value = (f.type === "date" && !f.default) ? new Date().toISOString().split("T")[0] : f.default;
           wrap.appendChild(el);
           startForm.appendChild(wrap);
         });
@@ -377,6 +423,7 @@
           if (!resp.ok) throw new Error("HTTP " + resp.status);
           const data = await resp.json();
           currentRunId = data.run_id;
+          startForm.style.display = "none";
           renderData(data);
           startPolling();
         } catch (err) {
@@ -419,9 +466,11 @@
         switch (data.status) {
           case "running":       setStatus("running", "Running…"); hideInputPanel(); break;
           case "waiting_input": setStatus("waiting", "Waiting for your input"); showInputPanel(data.pending); break;
-          case "completed":     setStatus("done", data.result ? "Completed — " + data.result : "Completed"); hideInputPanel(); break;
-          case "error":         setStatus("error", "Error: " + (data.error || "unknown")); hideInputPanel(); break;
+          case "completed":     setStatus("done", data.result ? "Completed — " + data.result : "Completed"); hideInputPanel(); startForm.style.display = ""; document.getElementById("start-btn").disabled = false; break;
+          case "error":         setStatus("error", "Error: " + (data.error || "unknown")); hideInputPanel(); startForm.style.display = ""; document.getElementById("start-btn").disabled = false; break;
         }
+        // Re-scroll after layout settles (showInputPanel shrinks the chat feed).
+        requestAnimationFrame(() => { chatFeed.scrollTop = chatFeed.scrollHeight; });
       }
 
       function clearChat() {
@@ -462,6 +511,8 @@
         inputPanel.appendChild(lbl);
         if (meta.inputType === "guessing") renderGuessingInput(pending);
         else if (meta.inputType === "email-approval") renderEmailApprovalInput(pending);
+        else if (meta.inputType === "invoice-approval") renderInvoiceApprovalInput(pending);
+        else if (meta.inputType === "support-ticket") renderSupportTicketInput(pending);
         else renderFeedbackInput(pending);
       }
 
@@ -551,6 +602,77 @@
           btns.appendChild(b);
         });
         inputPanel.appendChild(btns);
+      }
+
+      function renderInvoiceApprovalInput(pending) {
+        const hint = document.createElement("div");
+        hint.className = "input-panel-label";
+        hint.style.cssText = "color:var(--muted);margin-bottom:4px";
+        hint.textContent = "Manual review required — approve or reject this invoice:";
+        inputPanel.appendChild(hint);
+        const promptBox = document.createElement("div");
+        promptBox.className = "input-panel-prompt";
+        promptBox.textContent = pending.prompt || "";
+        inputPanel.appendChild(promptBox);
+        const actions = document.createElement("div");
+        actions.className = "input-panel-actions";
+        const notesArea = document.createElement("textarea");
+        notesArea.placeholder = "Optional notes (leave blank to approve without comments)…";
+        notesArea.style.minHeight = "48px";
+        actions.appendChild(notesArea);
+        const btns = document.createElement("div");
+        btns.className = "input-btns";
+        const approveBtn = document.createElement("button");
+        approveBtn.className = "btn btn-success";
+        approveBtn.textContent = "✅ Approve";
+        approveBtn.addEventListener("click", () => {
+          const note = notesArea.value.trim();
+          submitResponse(note ? "approve — " + note : "approve");
+        });
+        btns.appendChild(approveBtn);
+        const rejectBtn = document.createElement("button");
+        rejectBtn.className = "btn btn-danger";
+        rejectBtn.textContent = "✗ Reject";
+        rejectBtn.addEventListener("click", () => submitResponse("reject"));
+        btns.appendChild(rejectBtn);
+        actions.appendChild(btns);
+        inputPanel.appendChild(actions);
+      }
+
+      function renderSupportTicketInput(pending) {
+        const hint = document.createElement("div");
+        hint.className = "input-panel-label";
+        hint.style.cssText = "color:var(--muted);margin-bottom:4px";
+        hint.textContent = "Ticket escalated — approve the AI resolution or write a custom response:";
+        inputPanel.appendChild(hint);
+        const promptBox = document.createElement("div");
+        promptBox.className = "input-panel-prompt";
+        promptBox.textContent = pending.prompt || "";
+        inputPanel.appendChild(promptBox);
+        const actions = document.createElement("div");
+        actions.className = "input-panel-actions";
+        const responseArea = document.createElement("textarea");
+        responseArea.placeholder = "Optional: type a custom resolution to send to the customer…";
+        responseArea.style.minHeight = "60px";
+        actions.appendChild(responseArea);
+        const btns = document.createElement("div");
+        btns.className = "input-btns";
+        const approveBtn = document.createElement("button");
+        approveBtn.className = "btn btn-success";
+        approveBtn.textContent = "✅ Use AI Resolution";
+        approveBtn.addEventListener("click", () => submitResponse(""));
+        btns.appendChild(approveBtn);
+        const customBtn = document.createElement("button");
+        customBtn.className = "btn btn-primary";
+        customBtn.textContent = "✏️ Send Custom";
+        customBtn.addEventListener("click", () => {
+          const v = responseArea.value.trim();
+          if (!v) { responseArea.focus(); return; }
+          submitResponse(v);
+        });
+        btns.appendChild(customBtn);
+        actions.appendChild(btns);
+        inputPanel.appendChild(actions);
       }
 
       async function submitResponse(response) {

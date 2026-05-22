@@ -58,6 +58,12 @@ variable "frontend_name" {
   default     = "vfab-hitl-frontend"
 }
 
+variable "app_config_name" {
+  description = "Name of the Azure App Configuration store."
+  type        = string
+  default     = "vfab-hitl-appconfig"
+}
+
 variable "container_image" {
   description = "Container image to deploy to Azure Container Apps."
   type        = string
