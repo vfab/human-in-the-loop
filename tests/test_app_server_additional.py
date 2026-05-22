@@ -11,13 +11,11 @@ class AppServerAdditionalTests(unittest.TestCase):
     def setUp(self) -> None:
         self.client = TestClient(app_server.app)
 
-    def test_root_endpoint_contains_metadata(self) -> None:
+    def test_root_endpoint_serves_frontend(self) -> None:
         response = self.client.get("/")
         self.assertEqual(response.status_code, 200)
-        data = response.json()
-        self.assertIn("name", data)
-        self.assertIn("endpoints", data)
-        self.assertIn("POST /run", data["endpoints"])
+        self.assertIn("text/html", response.headers["content-type"])
+        self.assertIn("HITL Workflow Dashboard", response.text)
 
     def test_health_endpoint(self) -> None:
         response = self.client.get("/health")
