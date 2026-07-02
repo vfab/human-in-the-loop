@@ -187,45 +187,55 @@ class TurnManager(Executor):
         await ctx.send_message(AgentExecutorRequest(messages=[user_msg], should_respond=True))
 
 
-def create_guessing_agent():
-    """Create the guessing agent with instructions to guess a number between 1 and 100."""
-    api_version = "2024-12-01-preview"
-    endpoint = os.getenv("AZURE_OPENAI_ENDPOINT")
-    model = os.getenv("AZURE_OPENAI_CHAT_MODEL") or os.getenv("AZURE_OPENAI_MODEL")
-    api_key = os.getenv("AZURE_OPENAI_API_KEY")
+_GUESSING_AGENT_INSTRUCTIONS = (
+    "You are playing a guessing game to find a number between 1 and 100. "
+    "The human will give you feedback: 'higher' (your guess is too low, but close), "
+    "'much higher' (your guess is too low by a lot), 'lower' (your guess is too high, but close), "
+    "'much lower' (your guess is too high by a lot). "
+    "Use binary search strategy: narrow down the range quickly. "
+    "When you receive feedback with specific bounds, use them to calculate the midpoint. "
+    "You MUST return only the guessed integer (for example: 50). "
+    "No explanations or additional text."
+)
 
-    if not endpoint or not model:
-        raise ValueError(
-            "Missing Azure OpenAI config. Set AZURE_OPENAI_ENDPOINT and AZURE_OPENAI_CHAT_MODEL (or AZURE_OPENAI_MODEL)."
-        )
 
-    if api_key:
-        chat_client = OpenAIChatCompletionClient(
-            model=model,
-            azure_endpoint=endpoint,
-            api_version=api_version,
-            api_key=api_key,
-        )
-    else:
-        chat_client = OpenAIChatCompletionClient(
-            model=model,
-            azure_endpoint=endpoint,
-            api_version=api_version,
-            credential=AzureCliCredential(),
-        )
+def create_guessing_agent(chat_client: OpenAIChatCompletionClient | None = None):
+    """Create the guessing agent.
+
+    Args:
+        chat_client: Optional pre-built client.  When omitted the function
+            creates an Azure OpenAI client from environment variables (original
+            behaviour, used when running the script standalone).
+    """
+    if chat_client is None:
+        api_version = "2024-12-01-preview"
+        endpoint = os.getenv("AZURE_OPENAI_ENDPOINT")
+        model = os.getenv("AZURE_OPENAI_CHAT_MODEL") or os.getenv("AZURE_OPENAI_MODEL")
+        api_key = os.getenv("AZURE_OPENAI_API_KEY")
+
+        if not endpoint or not model:
+            raise ValueError(
+                "Missing Azure OpenAI config. Set AZURE_OPENAI_ENDPOINT and AZURE_OPENAI_CHAT_MODEL (or AZURE_OPENAI_MODEL)."
+            )
+
+        if api_key:
+            chat_client = OpenAIChatCompletionClient(
+                model=model,
+                azure_endpoint=endpoint,
+                api_version=api_version,
+                api_key=api_key,
+            )
+        else:
+            chat_client = OpenAIChatCompletionClient(
+                model=model,
+                azure_endpoint=endpoint,
+                api_version=api_version,
+                credential=AzureCliCredential(),
+            )
 
     return chat_client.as_agent(
         name="GuessingAgent",
-        instructions=(
-            "You are playing a guessing game to find a number between 1 and 100. "
-            "The human will give you feedback: 'higher' (your guess is too low, but close), "
-            "'much higher' (your guess is too low by a lot), 'lower' (your guess is too high, but close), "
-            "'much lower' (your guess is too high by a lot). "
-            "Use binary search strategy: narrow down the range quickly. "
-            "When you receive feedback with specific bounds, use them to calculate the midpoint. "
-            "You MUST return only the guessed integer (for example: 50). "
-            "No explanations or additional text."
-        ),
+        instructions=_GUESSING_AGENT_INSTRUCTIONS,
     )
 
 

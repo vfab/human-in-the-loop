@@ -10,6 +10,7 @@ import asyncio
 import logging
 import os
 import uuid
+from contextlib import asynccontextmanager
 from typing import Any, Literal
 
 from fastapi import FastAPI, HTTPException
@@ -17,6 +18,8 @@ from fastapi.responses import FileResponse
 from pathlib import Path
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
+
+from mode_config import is_local, resolve_mode
 
 from agent_framework import (
     AgentExecutorResponse,
@@ -40,12 +43,23 @@ from guessing_game_with_human_input import (
 
 logger = logging.getLogger(__name__)
 
-app = FastAPI(title="HITL Workflow Server", version="2.0.0")
+
+@asynccontextmanager
+async def _lifespan(_app: FastAPI):
+    await resolve_mode()
+    yield
+
+
+app = FastAPI(title="HITL Workflow Server", version="2.0.0", lifespan=_lifespan)
 
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
         "https://happy-desert-082ae9403.7.azurestaticapps.net",
+        "http://localhost:8000",
+        "http://127.0.0.1:8000",
+        "http://localhost:8001",
+        "http://127.0.0.1:8001",
     ],
     allow_methods=["GET", "POST"],
     allow_headers=["Content-Type"],
@@ -172,6 +186,12 @@ def _run_to_dict(run: WorkflowRun) -> dict:
 # ─────────────────────────────────────────────────────────────────────────────
 
 def _create_openai_client() -> OpenAIChatCompletionClient:
+    if is_local():
+        from stub_client import create_stub_client  # noqa: PLC0415
+
+        return create_stub_client()
+
+    # Azure mode
     endpoint = os.getenv("AZURE_OPENAI_ENDPOINT")
     model = os.getenv("AZURE_OPENAI_CHAT_MODEL") or os.getenv("AZURE_OPENAI_MODEL")
     api_key = os.getenv("AZURE_OPENAI_API_KEY")
@@ -453,7 +473,7 @@ async def _run_guessing_game(run: WorkflowRun) -> None:
             ),
         }
     )
-    guessing_agent = create_guessing_agent()
+    guessing_agent = create_guessing_agent(chat_client=_create_openai_client())
     turn_manager = TurnManager(id="turn_manager")
     workflow = (
         WorkflowBuilder(start_executor=turn_manager)

@@ -42,6 +42,22 @@ class EmailDeliveryTests(unittest.TestCase):
         self.assertEqual(recipient, "to@example.com")
         fake_client.begin_send.assert_called_once()
 
+    def test_send_email_via_acs_local_mode_logs_without_client(self) -> None:
+        with patch("email_delivery._is_local_mode", return_value=True):
+            with patch("email_delivery.logger") as fake_logger:
+                recipient = module.send_email_via_acs(
+                    subject="Subject",
+                    body="Body",
+                    recipient="local@example.com",
+                )
+
+        self.assertEqual(recipient, "local@example.com")
+        fake_logger.info.assert_called_once()
+
+    def test_is_local_mode_returns_false_when_mode_uninitialized(self) -> None:
+        with patch("email_delivery.is_local", side_effect=RuntimeError("not initialized")):
+            self.assertFalse(module._is_local_mode())
+
 
 if __name__ == "__main__":
     unittest.main()

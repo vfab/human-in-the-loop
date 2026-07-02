@@ -4,7 +4,21 @@ import os
 from azure.communication.email import EmailClient
 from azure.identity import DefaultAzureCredential
 
+from mode_config import is_local
+
 logger = logging.getLogger(__name__)
+
+
+def _is_local_mode() -> bool:
+    """Return local-mode status without requiring app lifespan initialization.
+
+    In unit tests and one-off scripts, mode_config.resolve_mode() may not have
+    executed yet. In that case, default to non-local behavior.
+    """
+    try:
+        return is_local()
+    except RuntimeError:
+        return False
 
 
 def resolve_email_recipient() -> tuple[str, str]:
@@ -37,6 +51,19 @@ def get_email_client() -> EmailClient:
 
 
 def send_email_via_acs(subject: str, body: str, recipient: str | None = None) -> str:
+    if _is_local_mode():
+        try:
+            recipient_address = recipient or resolve_email_recipient()[0]
+        except ValueError:
+            recipient_address = "local-dev@localhost"
+        logger.info(
+            "[LOCAL EMAIL STUB] To: %s | Subject: %s\n%s",
+            recipient_address,
+            subject,
+            body,
+        )
+        return recipient_address
+
     recipient_address = recipient or resolve_email_recipient()[0]
     sender_address = os.getenv("ACS_EMAIL_SENDER_ADDRESS")
     if not sender_address:
