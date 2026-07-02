@@ -1,17 +1,13 @@
 <!--
 Sync Impact Report
-- Version change: 1.1.0 -> 1.2.0
+- Version change: 1.2.0 -> 1.3.0
 - Modified principles:
-	- II. Test-First or Test-With-Change (NON-NEGOTIABLE) -> II. TDD Required (NON-NEGOTIABLE)
-	- III. CI-Aligned Test Gate (NON-NEGOTIABLE) -> III. Unit and Integration Test Gate (NON-NEGOTIABLE)
+	- III. Unit and Integration Test Gate (NON-NEGOTIABLE) -> III. Unit and Integration Test and CI Monitoring Gate (NON-NEGOTIABLE)
 - Added sections:
-	- Integration CI/CD Gate
+	- Post-Push CI/CD Monitoring
 - Removed sections: none
 - Templates requiring updates:
-	- .specify/templates/tasks-template.md: updated
-	- .github/agents/speckit.tasks.agent.md: updated
-	- .github/agents/speckit.implement.agent.md: updated
-	- .github/workflows/python-tests.yml: updated
+	- .github/agents/speckit.git.commit.agent.md: updated
 - Follow-up TODOs: none
 -->
 
@@ -25,10 +21,11 @@ Code SHOULD preserve clear separation between workflow orchestration, domain beh
 ### II. TDD Required (NON-NEGOTIABLE)
 All feature and bug-fix work MUST follow Red-Green-Refactor. Authors MUST write failing tests before implementation changes and keep tests in the same change set as production code.
 
-### III. Unit and Integration Test Gate (NON-NEGOTIABLE)
+### III. Unit and Integration Test and CI Monitoring Gate (NON-NEGOTIABLE)
 All unit tests and integration tests MUST pass before merge to main. The required baseline command is:
 `python -m unittest discover -s tests -p "test_*.py" -q`
 If local workflows use additional checks (for example pytest or coverage), they MAY be stricter, but they MUST not replace this baseline gate unless CI is updated first.
+After every push that includes code or infrastructure changes, authors MUST monitor CI/CD execution to completion and treat failures as blocking until resolved.
 
 ### IV. Coverage Visibility and Improvement
 Coverage SHOULD be visible for meaningful modules and MUST trend upward over time. When coverage tooling is enabled, exclusions MUST be narrowly scoped and justified in code comments or review notes.
@@ -48,6 +45,11 @@ User-impacting workflows and service endpoints MUST emit logs that are structure
 - CI/CD MUST run integration tests in addition to unit tests on pull requests and on merges to `main`.
 - Integration tests MUST be treated as blocking checks, not informational checks.
 
+## Post-Push CI/CD Monitoring
+
+- After each push, authors MUST check workflow status and confirm pass/fail outcomes.
+- If any required workflow fails, authors MUST investigate logs, apply fixes, and re-run CI/CD until required checks pass.
+
 ## Quality Gates
 
 - Semantic versioning for releases uses MAJOR.MINOR.PATCH.
@@ -58,4 +60,4 @@ User-impacting workflows and service endpoints MUST emit logs that are structure
 
 This constitution supersedes conflicting local practices for this repository. Amendments MUST be documented in the PR description that introduces the change, including rationale and impact. All PRs MUST verify compliance with these principles. Complexity must be justified.
 
-**Version**: 1.2.0 | **Ratified**: 2025-01-01 | **Last Amended**: 2026-07-02
+**Version**: 1.3.0 | **Ratified**: 2025-01-01 | **Last Amended**: 2026-07-02

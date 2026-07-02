@@ -27,6 +27,10 @@ This command is invoked as a hook after (or before) core commands. It:
 
   Avoid broad staging commands such as `git add .` unless the repository is newly initialized and the user explicitly requested a full snapshot.
 
+  7. CI/CD monitoring requirement:
+    - If the commit is pushed to a remote in the current workflow, monitor required CI/CD runs to completion.
+    - Treat CI/CD failures as blocking: inspect logs, apply fixes, and push follow-up commits until required checks pass.
+
 ## Execution
 
 Determine the event name from the hook that triggered this command, then run the script:
@@ -56,3 +60,7 @@ auto_commit:
 - If Git is not available or the current directory is not a repository: skips with a warning
 - If no config file exists: skips (disabled by default)
 - If no changes to commit: skips with a message
+
+## Post-Push CI/CD Checks
+
+When push access and CI tooling are available, verify post-push status with repository tooling (for example GitHub Actions via `gh run list` / `gh run view`) and report success or failure. If CI tooling is unavailable, state that limitation explicitly.
