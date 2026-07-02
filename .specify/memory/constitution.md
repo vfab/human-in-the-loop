@@ -1,18 +1,17 @@
 <!--
 Sync Impact Report
-- Version change: 1.0.0 -> 1.1.0
+- Version change: 1.1.0 -> 1.2.0
 - Modified principles:
-	- III. All Unit Tests Must Pass Before Merge (NON-NEGOTIABLE) -> III. CI-Aligned Test Gate (NON-NEGOTIABLE)
-	- IV. Minimum 95% Code Coverage -> IV. Coverage Visibility and Improvement
-- Added sections: none
+	- II. Test-First or Test-With-Change (NON-NEGOTIABLE) -> II. TDD Required (NON-NEGOTIABLE)
+	- III. CI-Aligned Test Gate (NON-NEGOTIABLE) -> III. Unit and Integration Test Gate (NON-NEGOTIABLE)
+- Added sections:
+	- Integration CI/CD Gate
 - Removed sections: none
 - Templates requiring updates:
-	- .specify/templates/plan-template.md: not required
-	- .specify/templates/spec-template.md: not required
-	- .specify/templates/tasks-template.md: not required
-	- .github/agents/speckit.plan.agent.md: updated
-	- .github/agents/speckit.git.commit.agent.md: updated
-	- .github/agents/speckit.git.initialize.agent.md: updated
+	- .specify/templates/tasks-template.md: updated
+	- .github/agents/speckit.tasks.agent.md: updated
+	- .github/agents/speckit.implement.agent.md: updated
+	- .github/workflows/python-tests.yml: updated
 - Follow-up TODOs: none
 -->
 
@@ -23,11 +22,11 @@ Sync Impact Report
 ### I. Layered Boundaries and Clear Responsibilities
 Code SHOULD preserve clear separation between workflow orchestration, domain behavior, and external integrations. New modules MUST define a single primary responsibility and avoid hidden coupling.
 
-### II. Test-First or Test-With-Change (NON-NEGOTIABLE)
-Every behavior change MUST include tests in the same change set. Teams SHOULD prefer red-green-refactor where practical, and MUST not merge behavior changes without updated or added automated tests.
+### II. TDD Required (NON-NEGOTIABLE)
+All feature and bug-fix work MUST follow Red-Green-Refactor. Authors MUST write failing tests before implementation changes and keep tests in the same change set as production code.
 
-### III. CI-Aligned Test Gate (NON-NEGOTIABLE)
-All unit tests MUST pass before merge to main. The required baseline command is:
+### III. Unit and Integration Test Gate (NON-NEGOTIABLE)
+All unit tests and integration tests MUST pass before merge to main. The required baseline command is:
 `python -m unittest discover -s tests -p "test_*.py" -q`
 If local workflows use additional checks (for example pytest or coverage), they MAY be stricter, but they MUST not replace this baseline gate unless CI is updated first.
 
@@ -40,8 +39,14 @@ User-impacting workflows and service endpoints MUST emit logs that are structure
 ## Testing Standards
 
 - Baseline unit test command: `python -m unittest discover -s tests -p "test_*.py" -q`
+- Integration test suites MUST exist for cross-component and external-service flows.
 - All tests MUST pass locally before committing merge-ready changes.
 - CI/CD enforces the merge gate; a failing pipeline blocks merge.
+
+## Integration CI/CD Gate
+
+- CI/CD MUST run integration tests in addition to unit tests on pull requests and on merges to `main`.
+- Integration tests MUST be treated as blocking checks, not informational checks.
 
 ## Quality Gates
 
@@ -53,4 +58,4 @@ User-impacting workflows and service endpoints MUST emit logs that are structure
 
 This constitution supersedes conflicting local practices for this repository. Amendments MUST be documented in the PR description that introduces the change, including rationale and impact. All PRs MUST verify compliance with these principles. Complexity must be justified.
 
-**Version**: 1.1.0 | **Ratified**: 2025-01-01 | **Last Amended**: 2026-07-02
+**Version**: 1.2.0 | **Ratified**: 2025-01-01 | **Last Amended**: 2026-07-02

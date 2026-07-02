@@ -24,9 +24,21 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
-      - name: Run tests
+      - name: Run unit test suite
         env:
           AZURE_OPENAI_ENDPOINT: https://example.openai.azure.com/
           AZURE_OPENAI_API_KEY: test-key
           AZURE_OPENAI_CHAT_MODEL: gpt-4o
         run: python -m unittest discover -s tests -p "test_*.py" -q
+
+      - name: Run integration test suite
+        env:
+          AZURE_OPENAI_ENDPOINT: https://example.openai.azure.com/
+          AZURE_OPENAI_API_KEY: test-key
+          AZURE_OPENAI_CHAT_MODEL: gpt-4o
+        run: |
+          python -m unittest \
+            tests.test_app_server \
+            tests.test_app_server_additional \
+            tests.test_agents_with_approval_requests \
+            -q
