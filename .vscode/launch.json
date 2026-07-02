@@ -4,7 +4,45 @@
     // For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
     "version": "0.2.0",
     "configurations": [
-    
+        {
+            "name": "HITL: Offline (stub)",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "uvicorn",
+            "args": ["app_server:app", "--port", "8001", "--reload"],
+            "env": {
+                "MOCK_MODE": "true"
+            },
+            "envFile": "${workspaceFolder}/.env",
+            "console": "integratedTerminal",
+            "jinja": true
+        },
+        {
+            "name": "HITL: Azure",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "uvicorn",
+            "args": ["app_server:app", "--port", "8001", "--reload"],
+            "env": {
+                "MOCK_MODE": "false"
+            },
+            "envFile": "${workspaceFolder}/.env",
+            "console": "integratedTerminal",
+            "jinja": true
+        },
+        {
+            "name": "HITL: Dynamic (probe Azure, fall back to stub)",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "uvicorn",
+            "args": ["app_server:app", "--port", "8001", "--reload"],
+            "env": {
+                "MOCK_MODE": "dynamic"
+            },
+            "envFile": "${workspaceFolder}/.env",
+            "console": "integratedTerminal",
+            "jinja": true
+        },
         {
             "name": "Python Debugger: Current File",
             "type": "debugpy",
