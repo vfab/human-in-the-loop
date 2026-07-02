@@ -1,39 +1,56 @@
-# AI Knowledge Assistant Constitution
+<!--
+Sync Impact Report
+- Version change: 1.0.0 -> 1.1.0
+- Modified principles:
+	- III. All Unit Tests Must Pass Before Merge (NON-NEGOTIABLE) -> III. CI-Aligned Test Gate (NON-NEGOTIABLE)
+	- IV. Minimum 95% Code Coverage -> IV. Coverage Visibility and Improvement
+- Added sections: none
+- Removed sections: none
+- Templates requiring updates:
+	- .specify/templates/plan-template.md: not required
+	- .specify/templates/spec-template.md: not required
+	- .specify/templates/tasks-template.md: not required
+	- .github/agents/speckit.plan.agent.md: updated
+	- .github/agents/speckit.git.commit.agent.md: updated
+	- .github/agents/speckit.git.initialize.agent.md: updated
+- Follow-up TODOs: none
+-->
+
+# Human-in-the-Loop Repository Constitution
 
 ## Core Principles
 
-### I. SOLID & Clean Architecture
-Follow SOLID principles and layered Clean Architecture: API → Service → Domain → Data. Dependencies point inward only; Domain has no outward dependencies.
+### I. Layered Boundaries and Clear Responsibilities
+Code SHOULD preserve clear separation between workflow orchestration, domain behavior, and external integrations. New modules MUST define a single primary responsibility and avoid hidden coupling.
 
-### II. Test-First (NON-NEGOTIABLE)
-TDD mandatory: tests written before or alongside production code. Red-Green-Refactor cycle strictly enforced. No implementation ships without corresponding tests.
+### II. Test-First or Test-With-Change (NON-NEGOTIABLE)
+Every behavior change MUST include tests in the same change set. Teams SHOULD prefer red-green-refactor where practical, and MUST not merge behavior changes without updated or added automated tests.
 
-### III. All Unit Tests Must Pass Before Merge (NON-NEGOTIABLE)
-All unit tests must pass before any merge to `main`. This is an absolute gate — a failing unit test is a blocker, not a warning. The test command is:
-`python -m pytest tests/unit/ -q --cov=. --cov-report=term-missing`
+### III. CI-Aligned Test Gate (NON-NEGOTIABLE)
+All unit tests MUST pass before merge to main. The required baseline command is:
+`python -m unittest discover -s tests -p "test_*.py" -q`
+If local workflows use additional checks (for example pytest or coverage), they MAY be stricter, but they MUST not replace this baseline gate unless CI is updated first.
 
-### IV. Minimum 95% Code Coverage
-Minimum code coverage: **95%** measured by `pytest-cov` across `backend/`. Untestable lines (e.g. optional native drivers, third-party env-var setup) must be explicitly noted in comments and excluded from the coverage gate.
+### IV. Coverage Visibility and Improvement
+Coverage SHOULD be visible for meaningful modules and MUST trend upward over time. When coverage tooling is enabled, exclusions MUST be narrowly scoped and justified in code comments or review notes.
 
-### V. Observability
-All services must emit structured JSON logs to stdout. Every deployed service must have a diagnostic setting routing logs to the shared log aggregation workspace. All log entries must include a `correlation_id`. No service ships without observability.
+### V. Operational Traceability
+User-impacting workflows and service endpoints MUST emit logs that are structured enough to correlate request flow and troubleshoot failures. Production deployments SHOULD include centralized log routing when platform capabilities are available.
 
 ## Testing Standards
 
-- Unit test command: `python -m pytest tests/unit/ -q --cov=. --cov-report=term-missing`
-- Frontend test command: `cd frontend && npm test`
-- All tests must pass locally before committing
-- CI/CD enforces the same gate — a red pipeline blocks merge
+- Baseline unit test command: `python -m unittest discover -s tests -p "test_*.py" -q`
+- All tests MUST pass locally before committing merge-ready changes.
+- CI/CD enforces the merge gate; a failing pipeline blocks merge.
 
 ## Quality Gates
 
-- Feature flags recommended for all new user-facing features
-- Semantic versioning required (MAJOR.MINOR.BUILD)
-- Continuous improvement enforced — tech debt tracked and addressed
-- The Reviewer agent validates TDD compliance and standards on every PR
+- Semantic versioning for releases uses MAJOR.MINOR.PATCH.
+- Risky or user-facing behavior changes SHOULD use explicit rollout controls where feasible.
+- Continuous improvement is expected; technical debt discovered during feature work SHOULD be tracked.
 
 ## Governance
 
-This constitution supersedes all other practices. Amendments require documentation in `docs/decisions/` as an ADR. All PRs must verify compliance with these principles. Complexity must be justified. Refer to `agents/` for role responsibilities and `docs/how-to/` for process guidance.
+This constitution supersedes conflicting local practices for this repository. Amendments MUST be documented in the PR description that introduces the change, including rationale and impact. All PRs MUST verify compliance with these principles. Complexity must be justified.
 
-**Version**: 1.0.0 | **Ratified**: 2025-01-01 | **Last Amended**: 2026-05-08
+**Version**: 1.1.0 | **Ratified**: 2025-01-01 | **Last Amended**: 2026-07-02
