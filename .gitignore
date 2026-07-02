@@ -7,4 +7,5 @@ infra/.terraform/
 infra/*.tfstate
 infra/*.tfstate.*
 infra/terraform.tfvars
+infra/tfplan
 __pycache__/

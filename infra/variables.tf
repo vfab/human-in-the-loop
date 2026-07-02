@@ -82,25 +82,74 @@ variable "container_memory" {
 }
 
 variable "azure_openai_endpoint" {
-  description = "Azure OpenAI endpoint URL."
+  description = "Legacy Azure OpenAI endpoint URL. Deprecated in favor of foundry_openai_endpoint."
   type        = string
+  default     = null
+  nullable    = true
 }
 
 variable "azure_openai_chat_model" {
-  description = "Azure OpenAI deployment name used by the app."
+  description = "Legacy Azure OpenAI deployment name used by the app. Deprecated in favor of foundry_openai_deployment."
   type        = string
+  default     = null
+  nullable    = true
 }
 
 variable "azure_openai_api_version" {
-  description = "Azure OpenAI API version."
+  description = "Legacy Azure OpenAI API version. Deprecated in favor of foundry_openai_api_version."
   type        = string
-  default     = "2024-12-01-preview"
+  default     = null
+  nullable    = true
 }
 
 variable "azure_openai_api_key" {
-  description = "Azure OpenAI API key."
+  description = "Legacy Azure OpenAI API key. Deprecated in favor of foundry_openai_api_key."
   type        = string
+  default     = null
+  nullable    = true
   sensitive   = true
+}
+
+variable "foundry_openai_endpoint" {
+  description = "Microsoft Foundry OpenAI-compatible endpoint URL (for example: https://<resource>.openai.azure.com/)."
+  type        = string
+  default     = null
+  nullable    = true
+}
+
+variable "foundry_openai_deployment" {
+  description = "Microsoft Foundry model deployment name used by the app."
+  type        = string
+  default     = null
+  nullable    = true
+}
+
+variable "foundry_openai_api_version" {
+  description = "Microsoft Foundry API version used by the app."
+  type        = string
+  default     = null
+  nullable    = true
+}
+
+variable "foundry_openai_api_key" {
+  description = "Microsoft Foundry API key."
+  type        = string
+  default     = null
+  nullable    = true
+  sensitive   = true
+}
+
+variable "key_vault_name" {
+  description = "Optional Key Vault name used to source model API keys. When set, openai_api_key_secret_name is read from this vault."
+  type        = string
+  default     = null
+  nullable    = true
+}
+
+variable "openai_api_key_secret_name" {
+  description = "Secret name in Key Vault containing the Foundry/OpenAI API key."
+  type        = string
+  default     = "azure-openai-api-key"
 }
 
 variable "acs_name" {

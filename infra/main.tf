@@ -14,6 +14,11 @@ locals {
   shared_rg_name       = var.shared_remote_state_enabled ? data.terraform_remote_state.shared[0].outputs.resource_group_name : var.resource_group_name
   shared_acr_name      = var.shared_remote_state_enabled ? data.terraform_remote_state.shared[0].outputs.acr_name : var.acr_name
   shared_container_env = var.shared_remote_state_enabled ? data.terraform_remote_state.shared[0].outputs.container_env_name : var.container_env_name
+
+  effective_openai_endpoint    = coalesce(var.foundry_openai_endpoint, var.azure_openai_endpoint)
+  effective_openai_deployment  = coalesce(var.foundry_openai_deployment, var.azure_openai_chat_model)
+  effective_openai_api_version = coalesce(var.foundry_openai_api_version, var.azure_openai_api_version, "2024-12-01-preview")
+  effective_openai_api_key     = var.key_vault_name != null ? data.azurerm_key_vault_secret.openai_api_key[0].value : coalesce(var.foundry_openai_api_key, var.azure_openai_api_key)
 }
 
 resource "azurerm_email_communication_service" "email" {
@@ -53,6 +58,18 @@ data "azurerm_container_registry" "target" {
   resource_group_name = data.azurerm_resource_group.target.name
 }
 
+data "azurerm_key_vault" "model_secrets" {
+  count               = var.key_vault_name != null ? 1 : 0
+  name                = var.key_vault_name
+  resource_group_name = data.azurerm_resource_group.target.name
+}
+
+data "azurerm_key_vault_secret" "openai_api_key" {
+  count        = var.key_vault_name != null ? 1 : 0
+  name         = var.openai_api_key_secret_name
+  key_vault_id = data.azurerm_key_vault.model_secrets[0].id
+}
+
 resource "azurerm_container_app" "backend" {
   name                         = var.backend_name
   resource_group_name          = data.azurerm_resource_group.target.name
@@ -72,7 +89,7 @@ resource "azurerm_container_app" "backend" {
 
   secret {
     name  = "azure-openai-api-key"
-    value = var.azure_openai_api_key
+    value = local.effective_openai_api_key
   }
 
   secret {
@@ -106,21 +123,41 @@ resource "azurerm_container_app" "backend" {
 
       env {
         name  = "AZURE_OPENAI_ENDPOINT"
-        value = var.azure_openai_endpoint
+        value = local.effective_openai_endpoint
       }
 
       env {
         name  = "AZURE_OPENAI_CHAT_MODEL"
-        value = var.azure_openai_chat_model
+        value = local.effective_openai_deployment
       }
 
       env {
         name  = "AZURE_OPENAI_API_VERSION"
-        value = var.azure_openai_api_version
+        value = local.effective_openai_api_version
       }
 
       env {
         name        = "AZURE_OPENAI_API_KEY"
+        secret_name = "azure-openai-api-key"
+      }
+
+      env {
+        name  = "FOUNDRY_OPENAI_ENDPOINT"
+        value = local.effective_openai_endpoint
+      }
+
+      env {
+        name  = "FOUNDRY_OPENAI_DEPLOYMENT"
+        value = local.effective_openai_deployment
+      }
+
+      env {
+        name  = "FOUNDRY_OPENAI_API_VERSION"
+        value = local.effective_openai_api_version
+      }
+
+      env {
+        name        = "FOUNDRY_OPENAI_API_KEY"
         secret_name = "azure-openai-api-key"
       }
 

@@ -8,10 +8,23 @@ backend_name             = "vfab-hitl-backend"
 frontend_name            = "vfab-hitl-frontend"
 container_image          = "ca81b3cb0669acr.azurecr.io/hitl-email-assistant:latest"
 
-azure_openai_endpoint    = "https://<your-openai-resource>.openai.azure.com/"
-azure_openai_chat_model  = "gpt-4o"
-azure_openai_api_version = "2024-12-01-preview"
-azure_openai_api_key     = "<your-azure-openai-api-key>"
+# Preferred: Foundry-style inputs (OpenAI-compatible endpoint/deployment)
+foundry_openai_endpoint    = "https://<your-foundry-openai-resource>.openai.azure.com/"
+foundry_openai_deployment  = "gpt-4o"
+foundry_openai_api_version = "2024-12-01-preview"
+
+# Preferred key source: Key Vault
+key_vault_name             = "<your-key-vault-name>"
+openai_api_key_secret_name = "azure-openai-api-key"
+
+# Direct key fallback (optional)
+foundry_openai_api_key     = null
+
+# Legacy compatibility inputs (optional; ignored when foundry_* values are set)
+azure_openai_endpoint    = null
+azure_openai_chat_model  = null
+azure_openai_api_version = null
+azure_openai_api_key     = null
 
 acs_name                 = "vfab-hitl-acs"
 acs_email_service_name   = "vfab-hitl-email"
