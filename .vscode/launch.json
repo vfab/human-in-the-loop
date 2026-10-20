@@ -1,10 +1,82 @@
 {
-    // Use IntelliSense to learn about possible attributes.
-    // Hover to view descriptions of existing attributes.
-    // For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
     "version": "0.2.0",
     "configurations": [
-    
+        {
+            "name": "FastAPI: Email Assistant Server",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "uvicorn",
+            "args": [
+                "app_server:app",
+                "--reload",
+                "--host",
+                "127.0.0.1",
+                "--port",
+                "8000"
+            ],
+            "jinja": true,
+            "justMyCode": true,
+            "console": "integratedTerminal",
+            "env": {
+                "PYTHONPATH": "${workspaceFolder}"
+            },
+            "preLaunchTask": "python: venv check"
+        },
+        {
+            "name": "Concurrent Request Info (Demo)",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/concurrent_request_info.py",
+            "console": "integratedTerminal",
+            "env": {
+                "PYTHONPATH": "${workspaceFolder}"
+            },
+            "preLaunchTask": "python: venv check"
+        },
+        {
+            "name": "Group Chat Request Info (Demo)",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/group_chat_request_info.py",
+            "console": "integratedTerminal",
+            "env": {
+                "PYTHONPATH": "${workspaceFolder}"
+            },
+            "preLaunchTask": "python: venv check"
+        },
+        {
+            "name": "Sequential Request Info (Demo)",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/sequential_request_info.py",
+            "console": "integratedTerminal",
+            "env": {
+                "PYTHONPATH": "${workspaceFolder}"
+            },
+            "preLaunchTask": "python: venv check"
+        },
+        {
+            "name": "Agents with Approval Requests (Demo)",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/agents_with_approval_requests.py",
+            "console": "integratedTerminal",
+            "env": {
+                "PYTHONPATH": "${workspaceFolder}"
+            },
+            "preLaunchTask": "python: venv check"
+        },
+        {
+            "name": "Guessing Game with Human Input (Demo)",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/guessing_game_with_human_input.py",
+            "console": "integratedTerminal",
+            "env": {
+                "PYTHONPATH": "${workspaceFolder}"
+            },
+            "preLaunchTask": "python: venv check"
+        },
         {
             "name": "Python Debugger: Current File",
             "type": "debugpy",

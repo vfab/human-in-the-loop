@@ -1,0 +1,66 @@
+{
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "label": "python: venv check",
+            "type": "shell",
+            "command": "powershell",
+            "args": [
+                "-Command",
+                "if (-not (Test-Path '.venv')) { Write-Host 'Virtual environment not found. Creating...'; python -m venv .venv }; Write-Host 'Virtual environment ready.'"
+            ],
+            "isBackground": false,
+            "presentation": {
+                "reveal": "silent",
+                "panel": "new"
+            },
+            "problemMatcher": []
+        },
+        {
+            "label": "python: install dependencies",
+            "type": "shell",
+            "command": "powershell",
+            "args": [
+                "-Command",
+                ".venv\\Scripts\\Activate.ps1; pip install -r requirements.txt"
+            ],
+            "isBackground": false,
+            "presentation": {
+                "reveal": "always",
+                "panel": "new"
+            },
+            "problemMatcher": []
+        },
+        {
+            "label": "docker: build and run",
+            "type": "shell",
+            "command": "powershell",
+            "args": [
+                "-Command",
+                "docker build -t hitl-email-assistant:latest . ; docker run -d --name hitl-email-assistant -p 8000:8000 -e AZURE_OPENAI_ENDPOINT='https://placeholder.openai.azure.com/' -e AZURE_OPENAI_CHAT_MODEL='gpt-4o' -e AZURE_OPENAI_API_VERSION='2024-12-01-preview' -e AZURE_OPENAI_API_KEY='placeholder-key' hitl-email-assistant:latest"
+            ],
+            "isBackground": false,
+            "presentation": {
+                "reveal": "always",
+                "panel": "new"
+            },
+            "problemMatcher": []
+        },
+        {
+            "label": "terraform: init and validate",
+            "type": "shell",
+            "command": "powershell",
+            "args": [
+                "-Command",
+                "cd infra; terraform init -backend-config=backend.hcl.example; terraform fmt -check; terraform validate"
+            ],
+            "isBackground": false,
+            "presentation": {
+                "reveal": "always",
+                "panel": "new"
+            },
+            "problemMatcher": [],
+            "dependsOn": []
+        }
+    ]
+}
