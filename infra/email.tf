@@ -9,10 +9,10 @@ resource "azurerm_email_communication_service" "hitl" {
 }
 
 resource "azurerm_email_communication_service_domain" "hitl" {
-  email_service_name      = azurerm_email_communication_service.hitl.name
-  name                    = "AzureManagedDomain"
-  resource_group_name     = data.azurerm_resource_group.main.name
-  domain_management      = "AzureManaged"
+  email_service_name  = azurerm_email_communication_service.hitl.name
+  name                = "AzureManagedDomain"
+  resource_group_name = data.azurerm_resource_group.main.name
+  domain_management   = "AzureManaged"
 
   lifecycle {
     prevent_destroy = true
