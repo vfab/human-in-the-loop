@@ -1,58 +1,24 @@
-resource "random_string" "suffix" {
-  length  = 6
-  upper   = false
-  special = false
-}
-
 locals {
-  # ACR names must be globally unique and alphanumeric only.
-  acr_name = substr(lower(replace("${var.name_prefix}${random_string.suffix.result}", "-", "")), 0, 20)
-  app_name = "${var.name_prefix}-email-assistant"
+  app_name = "hitl-email-assistant"
 }
 
-resource "azurerm_resource_group" "this" {
-  name     = var.resource_group_name
-  location = var.location
-}
-
-resource "azurerm_log_analytics_workspace" "this" {
-  name                = "${var.name_prefix}-law-${random_string.suffix.result}"
-  location            = azurerm_resource_group.this.location
-  resource_group_name = azurerm_resource_group.this.name
-  sku                 = "PerGB2018"
-  retention_in_days   = 30
-}
-
-resource "azurerm_container_app_environment" "this" {
-  name                       = "${var.name_prefix}-cae-${random_string.suffix.result}"
-  location                   = azurerm_resource_group.this.location
-  resource_group_name        = azurerm_resource_group.this.name
-  log_analytics_workspace_id = azurerm_log_analytics_workspace.this.id
-}
-
-resource "azurerm_container_registry" "this" {
-  name                = local.acr_name
-  location            = azurerm_resource_group.this.location
-  resource_group_name = azurerm_resource_group.this.name
-  sku                 = "Basic"
-  admin_enabled       = true
-}
+data "azurerm_client_config" "current" {}
 
 resource "azurerm_container_app" "this" {
   name                         = local.app_name
-  container_app_environment_id = azurerm_container_app_environment.this.id
-  resource_group_name          = azurerm_resource_group.this.name
+  container_app_environment_id = data.azurerm_container_app_environment.main.id
+  resource_group_name          = data.azurerm_resource_group.main.name
   revision_mode                = "Single"
 
   registry {
-    server               = azurerm_container_registry.this.login_server
-    username             = azurerm_container_registry.this.admin_username
+    server               = data.azurerm_container_registry.main.login_server
+    username             = data.azurerm_container_registry.main.admin_username
     password_secret_name = "acr-admin-password"
   }
 
   secret {
     name  = "acr-admin-password"
-    value = azurerm_container_registry.this.admin_password
+    value = data.azurerm_container_registry.main.admin_password
   }
 
   secret {
@@ -101,6 +67,4 @@ resource "azurerm_container_app" "this" {
       }
     }
   }
-
-  depends_on = [azurerm_container_registry.this]
 }

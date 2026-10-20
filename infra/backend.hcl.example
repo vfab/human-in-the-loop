@@ -1,0 +1,5 @@
+resource_group_name  = "rg-vfab"
+storage_account_name = "tfstateba1e5722"
+container_name       = "human-in-the-loop-tfstate"
+key                  = "human-in-the-loop.tfstate"
+use_azuread_auth     = true

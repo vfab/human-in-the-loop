@@ -1,19 +1,30 @@
-variable "location" {
-  description = "Azure region for all resources."
+variable "subscription_id" {
+  description = "Azure subscription ID."
   type        = string
-  default     = "eastus"
 }
 
-variable "resource_group_name" {
-  description = "Resource group name for Container Apps deployment."
+variable "shared_resource_group_name" {
+  description = "Shared resource group name."
   type        = string
-  default     = "rg-hitl-aca"
+  default     = "rg-vfab"
 }
 
-variable "name_prefix" {
-  description = "Prefix used in Azure resource names."
+variable "shared_acr_name" {
+  description = "Shared Azure Container Registry name."
   type        = string
-  default     = "hitl"
+  default     = "acrba1e5722"
+}
+
+variable "shared_container_app_env_name" {
+  description = "Shared Container Apps Environment name."
+  type        = string
+  default     = "vfab-cae"
+}
+
+variable "shared_log_analytics_workspace_name" {
+  description = "Shared Log Analytics Workspace name."
+  type        = string
+  default     = "vfab-log-analytics"
 }
 
 variable "container_image" {
