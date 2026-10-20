@@ -327,6 +327,49 @@ async def submit_input(workflow_id: str, body: dict[str, Any]) -> dict[str, Any]
 
 
 # ============================================================================
+# Helper Functions
+# ============================================================================
+
+async def _wait_for_response(run_id: str, request_id: str, timeout_seconds: int = 300) -> dict[str, Any] | None:
+    """Wait for a response to an approval or input request.
+    
+    Polls the run's pending_responses dict until the response appears or timeout occurs.
+    
+    NOTE: This function is currently unused. It will be integrated in Phase 4 when
+    workflows are refactored to support true human-in-the-loop approval.
+    
+    For now, workflows auto-approve internally, so this polling mechanism is
+    not needed. The REST API endpoints (/approve, /input) remain functional
+    for future integration.
+    
+    Args:
+        run_id: The run identifier
+        request_id: The request identifier to wait for
+        timeout_seconds: How long to wait before giving up (default 5 minutes)
+        
+    Returns:
+        The response dict if received, None if timeout
+    """
+    start_time = datetime.utcnow()
+    timeout = asyncio.get_event_loop().time() + timeout_seconds
+    
+    while asyncio.get_event_loop().time() < timeout:
+        if run_id in _active_runs:
+            run_info = _active_runs[run_id]
+            if request_id in run_info.get("pending_responses", {}):
+                response = run_info["pending_responses"].pop(request_id)
+                logger.debug("Response received for %s after %s seconds", 
+                           request_id, (datetime.utcnow() - start_time).total_seconds())
+                return response
+        
+        # Wait a bit before polling again
+        await asyncio.sleep(0.5)
+    
+    logger.warning("Timeout waiting for response to %s after %s seconds", request_id, timeout_seconds)
+    return None
+
+
+# ============================================================================
 # WebSocket Routes
 # ============================================================================
 
@@ -371,25 +414,154 @@ async def websocket_workflow_stream(websocket: WebSocket, workflow_id: str, run_
             "severity": "info",
         })
         
-        # TODO: Implement workflow execution
-        # For now, send a placeholder message
-        await websocket.send_json({
-            "type": "agent_message",
-            "timestamp": datetime.utcnow().isoformat(),
-            "agent_name": "System",
-            "content": "Workflow execution not yet implemented. Please wait for Phase 2 completion.",
-            "severity": "info",
-        })
+        # Execute the workflow
+        if workflow_id not in _workflow_runners:
+            await websocket.send_json({
+                "type": "error",
+                "content": f"Unknown workflow: {workflow_id}",
+                "severity": "error",
+            })
+            await websocket.close()
+            return
         
-        # Send completion
-        await websocket.send_json({
-            "type": "workflow_complete",
-            "timestamp": datetime.utcnow().isoformat(),
-            "content": "Workflow completed",
-            "severity": "info",
-        })
+        workflow_runner = _workflow_runners[workflow_id]
+        user_input = run_info.get("input", "")
         
-        run_info["status"] = "completed"
+        logger.info("Starting workflow execution for %s with input: %s", workflow_id, user_input[:100] if user_input else "(none)")
+        
+        # Stream events from the workflow
+        try:
+            # Call workflow with appropriate parameters based on workflow type
+            if workflow_id == "approval" or workflow_id == "game":
+                # These workflows don't take user input
+                workflow_stream = workflow_runner(_config)
+            elif workflow_id == "concurrent":
+                # Takes analysis_topic parameter
+                topic = user_input or "Analyze the impact of large language models on software development."
+                workflow_stream = workflow_runner(_config, topic)
+            elif workflow_id == "group_chat":
+                # Takes topic parameter
+                topic = user_input or "Discuss how our team should approach adopting AI tools for productivity."
+                workflow_stream = workflow_runner(_config, topic)
+            elif workflow_id == "sequential":
+                # Takes topic parameter
+                topic = user_input or "Write a brief introduction to artificial intelligence."
+                workflow_stream = workflow_runner(_config, topic)
+            else:
+                await websocket.send_json({
+                    "type": "error",
+                    "content": f"Unknown workflow: {workflow_id}",
+                    "severity": "error",
+                })
+                await websocket.close()
+                return
+            
+            async for event in workflow_stream:
+                # Handle different event types
+                if hasattr(event, 'type'):
+                    event_type = event.type
+                    event_data = event.data if hasattr(event, 'data') else {}
+                    event_source = event.source_executor_id if hasattr(event, 'source_executor_id') else "system"
+                else:
+                    # Handle raw dict events
+                    event_type = event.get("type", "unknown")
+                    event_data = event.get("data", {})
+                    event_source = event.get("source_executor_id", "system")
+                
+                logger.debug("Workflow event: type=%s, source=%s", event_type, event_source)
+                
+                # Send agent messages
+                if event_type == "agent_message":
+                    content = event_data.get("content", "") if isinstance(event_data, dict) else str(event_data)
+                    agent_name = event_data.get("agent", event_source) if isinstance(event_data, dict) else event_source
+                    
+                    await websocket.send_json({
+                        "type": "agent_message",
+                        "timestamp": datetime.utcnow().isoformat(),
+                        "agent_name": agent_name,
+                        "content": content,
+                        "severity": "info",
+                    })
+                
+                # Send approval requests
+                elif event_type == "approval_required":
+                    request_id = event_data.get("request_id", str(uuid.uuid4())) if isinstance(event_data, dict) else str(uuid.uuid4())
+                    prompt = event_data.get("prompt", "Approve?") if isinstance(event_data, dict) else "Approve?"
+                    
+                    await websocket.send_json({
+                        "type": "approval_required",
+                        "timestamp": datetime.utcnow().isoformat(),
+                        "request_id": request_id,
+                        "content": prompt,
+                        "severity": "info",
+                    })
+                    
+                    # NOTE: Currently workflows auto-approve internally.
+                    # This is a placeholder for future human-in-the-loop integration.
+                    # Once we refactor workflows to accept responses as parameters,
+                    # we can implement actual response polling here:
+                    # response = await _wait_for_response(run_id, request_id, timeout_seconds=300)
+                    # if response:
+                    #     run_info["pending_responses"][request_id] = response
+                
+                # Send input requests
+                elif event_type == "input_required":
+                    request_id = event_data.get("request_id", str(uuid.uuid4())) if isinstance(event_data, dict) else str(uuid.uuid4())
+                    prompt = event_data.get("prompt", "Enter input:") if isinstance(event_data, dict) else "Enter input:"
+                    
+                    await websocket.send_json({
+                        "type": "input_required",
+                        "timestamp": datetime.utcnow().isoformat(),
+                        "request_id": request_id,
+                        "content": prompt,
+                        "severity": "info",
+                    })
+                    
+                    # NOTE: Currently workflows auto-approve internally (see approval_required above).
+                    # This is a placeholder for future human-in-the-loop integration.
+                
+                # Send workflow complete
+                elif event_type == "workflow_complete":
+                    await websocket.send_json({
+                        "type": "workflow_complete",
+                        "timestamp": datetime.utcnow().isoformat(),
+                        "content": "Workflow completed successfully",
+                        "severity": "info",
+                    })
+                    run_info["status"] = "completed"
+                    break
+                
+                # Send errors
+                elif event_type == "error":
+                    content = event_data.get("message", str(event_data)) if isinstance(event_data, dict) else str(event_data)
+                    await websocket.send_json({
+                        "type": "error",
+                        "timestamp": datetime.utcnow().isoformat(),
+                        "content": content,
+                        "severity": "error",
+                    })
+                
+                # Allow other events to pass through (status, etc.)
+                else:
+                    logger.debug("Unhandled event type: %s", event_type)
+        
+        except asyncio.CancelledError:
+            logger.info("Workflow execution cancelled for %s", workflow_id)
+            await websocket.send_json({
+                "type": "error",
+                "content": "Workflow execution cancelled",
+                "severity": "warning",
+            })
+            run_info["status"] = "cancelled"
+        
+        except Exception as e:
+            logger.exception("Error during workflow execution: %s", e)
+            await websocket.send_json({
+                "type": "error",
+                "content": f"Workflow error: {str(e)}",
+                "severity": "error",
+            })
+            run_info["status"] = "error"
         
     except WebSocketDisconnect:
         logger.info("WebSocket disconnected for workflow %s run %s", workflow_id, run_id)
