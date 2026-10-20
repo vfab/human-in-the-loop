@@ -2,7 +2,7 @@
     "version": "0.2.0",
     "configurations": [
         {
-            "name": "HITL Dashboard (FastAPI)",
+            "name": "HITL Dashboard",
             "type": "debugpy",
             "request": "launch",
             "module": "uvicorn",
@@ -21,93 +21,6 @@
                 "PYTHONPATH": "${workspaceFolder}"
             },
             "preLaunchTask": "python: venv check"
-        },
-        {
-            "name": "Concurrent Request Info (Demo)",
-            "type": "debugpy",
-            "request": "launch",
-            "program": "${workspaceFolder}/concurrent_request_info.py",
-            "console": "integratedTerminal",
-            "env": {
-                "PYTHONPATH": "${workspaceFolder}"
-            },
-            "preLaunchTask": "python: venv check"
-        },
-        {
-            "name": "Group Chat Request Info (Demo)",
-            "type": "debugpy",
-            "request": "launch",
-            "program": "${workspaceFolder}/group_chat_request_info.py",
-            "console": "integratedTerminal",
-            "env": {
-                "PYTHONPATH": "${workspaceFolder}"
-            },
-            "preLaunchTask": "python: venv check"
-        },
-        {
-            "name": "Sequential Request Info (Demo)",
-            "type": "debugpy",
-            "request": "launch",
-            "program": "${workspaceFolder}/sequential_request_info.py",
-            "console": "integratedTerminal",
-            "env": {
-                "PYTHONPATH": "${workspaceFolder}"
-            },
-            "preLaunchTask": "python: venv check"
-        },
-        {
-            "name": "Agents with Approval Requests (Demo)",
-            "type": "debugpy",
-            "request": "launch",
-            "program": "${workspaceFolder}/agents_with_approval_requests.py",
-            "console": "integratedTerminal",
-            "env": {
-                "PYTHONPATH": "${workspaceFolder}"
-            },
-            "preLaunchTask": "python: venv check"
-        },
-        {
-            "name": "Guessing Game with Human Input (Demo)",
-            "type": "debugpy",
-            "request": "launch",
-            "program": "${workspaceFolder}/guessing_game_with_human_input.py",
-            "console": "integratedTerminal",
-            "env": {
-                "PYTHONPATH": "${workspaceFolder}"
-            },
-            "preLaunchTask": "python: venv check"
-        },
-        {
-            "name": "Python Debugger: Current File",
-            "type": "debugpy",
-            "request": "launch",
-            "program": "${file}",
-            "console": "integratedTerminal"
-        }
-    ],
-    "compounds": [
-        {
-            "name": "HITL Dashboard + All Demo Scripts",
-            "configurations": [
-                "HITL Dashboard (FastAPI)",
-                "Concurrent Request Info (Demo)",
-                "Group Chat Request Info (Demo)",
-                "Sequential Request Info (Demo)",
-                "Agents with Approval Requests (Demo)",
-                "Guessing Game with Human Input (Demo)"
-            ],
-            "stopAll": true
-        },
-        {
-            "name": "Demo Scripts Only (All)",
-            "configurations": [
-                "Concurrent Request Info (Demo)",
-                "Group Chat Request Info (Demo)",
-                "Sequential Request Info (Demo)",
-                "Agents with Approval Requests (Demo)",
-                "Guessing Game with Human Input (Demo)"
-            ],
-            "stopAll": true
         }
     ]
 }
