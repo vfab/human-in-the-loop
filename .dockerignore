@@ -12,4 +12,3 @@ infra/*.tfstate
 infra/*.tfstate.*
 .env
 .vscode
-.specify
