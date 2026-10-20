@@ -2,12 +2,12 @@
     "version": "0.2.0",
     "configurations": [
         {
-            "name": "FastAPI: Email Assistant Server",
+            "name": "HITL Dashboard (FastAPI)",
             "type": "debugpy",
             "request": "launch",
             "module": "uvicorn",
             "args": [
-                "app_server:app",
+                "main:app",
                 "--reload",
                 "--host",
                 "127.0.0.1",
@@ -87,8 +87,9 @@
     ],
     "compounds": [
         {
-            "name": "All Demos (Concurrent + Group Chat + Sequential + Approval + Game)",
+            "name": "HITL Dashboard + All Demo Scripts",
             "configurations": [
+                "HITL Dashboard (FastAPI)",
                 "Concurrent Request Info (Demo)",
                 "Group Chat Request Info (Demo)",
                 "Sequential Request Info (Demo)",
@@ -98,9 +99,8 @@
             "stopAll": true
         },
         {
-            "name": "All with FastAPI Server",
+            "name": "Demo Scripts Only (All)",
             "configurations": [
-                "FastAPI: Email Assistant Server",
                 "Concurrent Request Info (Demo)",
                 "Group Chat Request Info (Demo)",
                 "Sequential Request Info (Demo)",
