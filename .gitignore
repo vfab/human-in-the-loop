@@ -3,6 +3,7 @@
 venv/
 env/
 ENV/
+.copilot-tracking
 infra/.terraform/
 infra/*.tfstate
 infra/*.tfstate.*
