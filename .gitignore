@@ -8,4 +8,6 @@ infra/.terraform/
 infra/*.tfstate
 infra/*.tfstate.*
 infra/terraform.tfvars
+infra/tfplan
+infra/backend.hcl
 __pycache__/
