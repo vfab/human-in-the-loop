@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>HITL Demo Dashboard</title>
+    <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+    <div class="container">
+        <!-- Header -->
+        <header class="header">
+            <h1>🤖 Human-In-The-Loop Demo Dashboard</h1>
+            <p class="subtitle">Interactive demonstrations of human-in-the-loop AI workflows</p>
+        </header>
+
+        <!-- Main Layout: Sidebar + Content -->
+        <div class="main-layout">
+            <!-- Sidebar -->
+            <aside class="sidebar">
+                <div class="sidebar-header">
+                    <h2>Workflows</h2>
+                </div>
+                <nav class="workflow-list" id="workflowList">
+                    <!-- Populated by JavaScript -->
+                </nav>
+            </aside>
+
+            <!-- Content Panel -->
+            <main class="content">
+                <!-- Workflow Selection Panel -->
+                <div class="panel" id="selectionPanel">
+                    <div class="panel-content">
+                        <h2>Select a Workflow</h2>
+                        <p>Click a workflow on the left to begin.</p>
+                    </div>
+                </div>
+
+                <!-- Workflow Execution Panel (hidden initially) -->
+                <div class="panel" id="executionPanel" style="display: none;">
+                    <div class="panel-header">
+                        <h2 id="workflowTitle">Workflow Title</h2>
+                        <button class="btn-icon" id="closeButton" title="Close">✕</button>
+                    </div>
+
+                    <!-- Input Section -->
+                    <div class="input-section" id="inputSection" style="display: none;">
+                        <label for="workflowInput">Workflow Input:</label>
+                        <textarea id="workflowInput" placeholder="Enter input text..." rows="3"></textarea>
+                        <button class="btn btn-primary" id="startButton">Start Workflow</button>
+                    </div>
+
+                    <!-- Output Panel -->
+                    <div class="output-panel">
+                        <div class="output-header">
+                            <h3>Workflow Output</h3>
+                            <span class="status-badge" id="statusBadge">Ready</span>
+                        </div>
+                        <div class="output-content" id="outputContent">
+                            <p class="placeholder">Waiting for workflow output...</p>
+                        </div>
+                    </div>
+
+                    <!-- Approval Modal -->
+                    <div class="modal" id="approvalModal" style="display: none;">
+                        <div class="modal-content">
+                            <h3>Approval Required</h3>
+                            <p id="approvalPrompt"></p>
+                            <div class="approval-content" id="approvalContent"></div>
+                            <div class="modal-buttons">
+                                <button class="btn btn-success" id="approveButton">✓ Approve</button>
+                                <button class="btn btn-danger" id="rejectButton">✗ Reject</button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Input Modal -->
+                    <div class="modal" id="inputModal" style="display: none;">
+                        <div class="modal-content">
+                            <h3>Input Required</h3>
+                            <p id="inputPrompt"></p>
+                            <input type="text" id="inputField" placeholder="Enter your response..." />
+                            <div class="modal-buttons">
+                                <button class="btn btn-primary" id="submitInputButton">Submit</button>
+                                <button class="btn btn-secondary" id="cancelInputButton">Cancel</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </main>
+        </div>
+
+        <!-- Status Bar -->
+        <footer class="status-bar">
+            <span id="statusText">Ready</span>
+            <span id="connectionStatus" class="connection-status">●</span>
+        </footer>
+    </div>
+
+    <script src="/static/js/dashboard.js"></script>
+</body>
+</html>
