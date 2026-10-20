@@ -84,5 +84,30 @@
             "program": "${file}",
             "console": "integratedTerminal"
         }
+    ],
+    "compounds": [
+        {
+            "name": "All Demos (Concurrent + Group Chat + Sequential + Approval + Game)",
+            "configurations": [
+                "Concurrent Request Info (Demo)",
+                "Group Chat Request Info (Demo)",
+                "Sequential Request Info (Demo)",
+                "Agents with Approval Requests (Demo)",
+                "Guessing Game with Human Input (Demo)"
+            ],
+            "stopAll": true
+        },
+        {
+            "name": "All with FastAPI Server",
+            "configurations": [
+                "FastAPI: Email Assistant Server",
+                "Concurrent Request Info (Demo)",
+                "Group Chat Request Info (Demo)",
+                "Sequential Request Info (Demo)",
+                "Agents with Approval Requests (Demo)",
+                "Guessing Game with Human Input (Demo)"
+            ],
+            "stopAll": true
+        }
     ]
 }
