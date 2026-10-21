@@ -455,7 +455,7 @@ class HITLDashboard {
         (event.options || []).forEach(value => {
             const button = document.createElement('button');
             button.className = 'btn btn-secondary';
-            button.textContent = value;
+            button.textContent = value.charAt(0).toUpperCase() + value.slice(1);
             button.addEventListener('click', () => this.submitInput(value));
             options.appendChild(button);
         });
