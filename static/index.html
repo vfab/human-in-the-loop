@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>HITL Demo Dashboard</title>
-    <link rel="stylesheet" href="/static/css/style.css">
+    <link rel="stylesheet" href="/static/css/style.css?v=5">
 </head>
 <body>
     <div class="container">
@@ -45,8 +45,13 @@
 
                     <!-- Input Section -->
                     <div class="input-section" id="inputSection" style="display: none;">
-                        <label for="workflowInput">Workflow Input:</label>
-                        <textarea id="workflowInput" placeholder="Enter input text..." rows="3"></textarea>
+                        <div class="input-header">
+                            <label for="workflowInput">Workflow Input:</label>
+                            <select id="sampleSelect" title="Insert sample input">
+                                <option value="">Sample inputs…</option>
+                            </select>
+                        </div>
+                        <textarea id="workflowInput" placeholder="Enter input text..." rows="6"></textarea>
                         <button class="btn btn-primary" id="startButton">Start Workflow</button>
                     </div>
 
@@ -79,10 +84,11 @@
                         <div class="modal-content">
                             <h3>Input Required</h3>
                             <p id="inputPrompt"></p>
+                            <div class="input-options" id="inputOptions"></div>
                             <input type="text" id="inputField" placeholder="Enter your response..." />
                             <div class="modal-buttons">
                                 <button class="btn btn-primary" id="submitInputButton">Submit</button>
-                                <button class="btn btn-secondary" id="cancelInputButton">Cancel</button>
+                                <button class="btn btn-secondary" id="cancelInputButton">Skip</button>
                             </div>
                         </div>
                     </div>
@@ -97,6 +103,6 @@
         </footer>
     </div>
 
-    <script src="/static/js/dashboard.js"></script>
+    <script src="/static/js/dashboard.js?v=7"></script>
 </body>
 </html>

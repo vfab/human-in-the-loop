@@ -16,6 +16,7 @@ Flow:
 5. Email sent via SMTP
 """
 
+import asyncio
 import logging
 import smtplib
 from dataclasses import dataclass
@@ -26,7 +27,7 @@ from agent_framework_openai import OpenAIChatCompletionClient
 from azure.identity import AzureCliCredential
 from agent_framework import WorkflowEvent
 
-from . import WorkflowConfig
+from . import WorkflowConfig, reply_approved
 
 logger = logging.getLogger(__name__)
 
@@ -41,6 +42,44 @@ class Email:
     
     def __str__(self) -> str:
         return f"To: {self.recipient}\nFrom: {self.sender}\nSubject: {self.subject}\n\n{self.body}"
+
+
+_TEAM = "team@example.com"
+
+DEFAULT_SCENARIO = "default"
+
+# Incoming-email scenarios selectable from the dashboard's sample drop-down.
+EMAIL_SCENARIOS: dict[str, list[Email]] = {
+    DEFAULT_SCENARIO: [
+        Email(_TEAM, "john@example.com", "Project Status Update",
+              "Hi, can you provide an update on the current project status?"),
+        Email(_TEAM, "sam@example.com", "Urgent: Budget Review",
+              "Need your input on the Q4 budget allocation ASAP."),
+    ],
+    "status_update": [
+        Email(_TEAM, "john@example.com", "Project Status Update",
+              "Hi, can you provide an update on the current project status?"),
+    ],
+    "budget_review": [
+        Email(_TEAM, "sam@example.com", "Urgent: Budget Review",
+              "Need your input on the Q4 budget allocation ASAP."),
+    ],
+    "meeting_request": [
+        Email(_TEAM, "priya@example.com", "Meeting Request",
+              "Could we find 30 minutes next week to go over the launch plan? "
+              "I'm free Tuesday or Thursday afternoon."),
+    ],
+    "customer_complaint": [
+        Email(_TEAM, "customer@example.com", "Order arrived damaged",
+              "My order #48213 arrived with a cracked screen. I'd like a replacement "
+              "or a refund as soon as possible."),
+    ],
+    "invoice_question": [
+        Email(_TEAM, "accounting@example.com", "Question about invoice #1042",
+              "The total on invoice #1042 looks higher than the quote we agreed on. "
+              "Can you explain the difference?"),
+    ],
+}
 
 
 def _resolve_email_recipient(config: WorkflowConfig) -> str:
@@ -76,7 +115,8 @@ def send_email_via_smtp(config: WorkflowConfig, email: Email, body: str) -> None
 
 
 async def run_approval_workflow(
-    config: WorkflowConfig
+    config: WorkflowConfig,
+    scenario: str = "",
 ) -> AsyncIterator[WorkflowEvent]:
     """Run the approval workflow.
     
@@ -85,7 +125,7 @@ async def run_approval_workflow(
     
     Args:
         config: WorkflowConfig with Azure OpenAI and SMTP settings
-        
+        scenario: Key of the incoming-email scenario in EMAIL_SCENARIOS (blank = default)
     Yields:
         WorkflowEvent objects for dashboard consumption
     """
@@ -130,21 +170,8 @@ async def run_approval_workflow(
             ),
         )
         
-        # Sample emails to process
-        sample_emails = [
-            Email(
-                recipient="team@example.com",
-                sender="john@example.com",
-                subject="Project Status Update",
-                body="Hi, can you provide an update on the current project status?"
-            ),
-            Email(
-                recipient="team@example.com",
-                sender="sam@example.com",
-                subject="Urgent: Budget Review",
-                body="Need your input on the Q4 budget allocation ASAP."
-            ),
-        ]
+        # Emails to process (the dashboard's sample drop-down picks the scenario)
+        sample_emails = EMAIL_SCENARIOS.get(scenario) or EMAIL_SCENARIOS[DEFAULT_SCENARIO]
         
         yield WorkflowEvent(
             type="agent_message",
@@ -191,26 +218,33 @@ async def run_approval_workflow(
                     source_executor_id="Email Writer"
                 )
                 
-                # Request approval
-                yield WorkflowEvent(
+                # Request approval; the human's reply comes back from the yield
+                reply = yield WorkflowEvent(
                     type="approval_required",
                     data={
                         "request_id": f"email_{i}",
-                        "prompt": f"Send this response to {email.recipient}?",
+                        "prompt": f"Send this response to {_resolve_email_recipient(config)}?",
                         "subject": f"Re: {email.subject}",
                         "content": draft_body,
-                        "allow_edit": True
                     },
                     source_executor_id="system"
                 )
                 
-                # Default: approve and send
+                if not reply_approved(reply):
+                    yield WorkflowEvent(
+                        type="agent_message",
+                        data={"content": f"✗ Email {i+1} not sent (rejected)"},
+                        source_executor_id="system"
+                    )
+                    continue
+                
                 try:
-                    send_email_via_smtp(config, email, draft_body)
+                    recipient = _resolve_email_recipient(config)
+                    await asyncio.to_thread(send_email_via_smtp, config, email, draft_body)
                     yield WorkflowEvent(
                         type="agent_message",
                         data={
-                            "content": f"✓ Email sent to {email.recipient}"
+                            "content": f"✓ Email sent to {recipient}"
                         },
                         source_executor_id="system"
                     )

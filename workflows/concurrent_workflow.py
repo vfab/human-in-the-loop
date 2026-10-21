@@ -34,7 +34,7 @@ from agent_framework_orchestrations import AgentRequestInfoResponse, ConcurrentB
 from agent_framework_openai import OpenAIChatCompletionClient
 from azure.identity import AzureCliCredential
 
-from . import WorkflowConfig
+from . import WorkflowConfig, reply_approved
 
 logger = logging.getLogger(__name__)
 
@@ -304,22 +304,31 @@ async def run_concurrent_workflow(
                             source_executor_id=event.source_executor_id
                         )
                         
-                        # Yield approval request
-                        yield WorkflowEvent(
+                        # Yield approval request; the human's reply comes back from the yield
+                        reply = yield WorkflowEvent(
                             type="approval_required",
                             data={
                                 "request_id": event.request_id,
                                 "prompt": f"Approve output from {event.source_executor_id}?",
+                                "content": event.data.agent_response.text,
                                 "agent": event.source_executor_id
                             },
                             source_executor_id=event.source_executor_id
                         )
                         
-                        # Wait for user response (would come from dashboard)
-                        # For now, yield and let caller handle
-                        state.pending_responses = {
-                            event.request_id: AgentRequestInfoResponse.approve()
-                        }
+                        if reply_approved(reply, default=True):
+                            response = AgentRequestInfoResponse.approve()
+                        else:
+                            yield WorkflowEvent(
+                                type="agent_message",
+                                data={"content": "Analysis rejected; asking the analyst to revise."},
+                                source_executor_id="system"
+                            )
+                            response = AgentRequestInfoResponse.from_strings([
+                                "The reviewer rejected this analysis. Please reconsider and "
+                                "provide a revised, more balanced perspective."
+                            ])
+                        state.pending_responses = {event.request_id: response}
                 
                 elif isinstance(event, WorkflowEvent) and event.type == "output":
                     # Workflow complete with aggregated output
@@ -334,7 +343,7 @@ async def run_concurrent_workflow(
                         
                         # Request approval to send email
                         recipient, _ = _resolve_email_recipient(config)
-                        yield WorkflowEvent(
+                        reply = yield WorkflowEvent(
                             type="approval_required",
                             data={
                                 "request_id": "email_send",
@@ -343,6 +352,21 @@ async def run_concurrent_workflow(
                             },
                             source_executor_id="system"
                         )
+                        
+                        if reply_approved(reply):
+                            await asyncio.to_thread(send_summary_email_via_smtp, config, summary_text)
+                            state.email_sent = True
+                            yield WorkflowEvent(
+                                type="agent_message",
+                                data={"content": f"✓ Summary emailed to {recipient}"},
+                                source_executor_id="system"
+                            )
+                        else:
+                            yield WorkflowEvent(
+                                type="agent_message",
+                                data={"content": "✗ Summary not emailed (rejected)"},
+                                source_executor_id="system"
+                            )
                     
                     state.workflow_complete = True
                 

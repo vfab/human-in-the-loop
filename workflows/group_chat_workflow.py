@@ -17,6 +17,7 @@ Flow:
 4. Discussion is synthesized and emailed with approval
 """
 
+import asyncio
 import logging
 import smtplib
 from email.message import EmailMessage
@@ -31,7 +32,7 @@ from agent_framework_orchestrations import AgentRequestInfoResponse, SequentialB
 from agent_framework_openai import OpenAIChatCompletionClient
 from azure.identity import AzureCliCredential
 
-from . import WorkflowConfig
+from . import WorkflowConfig, reply_approved, reply_text
 
 logger = logging.getLogger(__name__)
 
@@ -200,20 +201,30 @@ async def run_group_chat_workflow(
                             source_executor_id=event.source_executor_id
                         )
                         
-                        # Request human steering input
-                        yield WorkflowEvent(
+                        # Request human steering input; the reply comes back from the yield
+                        reply = yield WorkflowEvent(
                             type="input_required",
                             data={
                                 "request_id": event.request_id,
-                                "prompt": "Provide guidance to steer the pragmatist (or enter to skip):",
+                                "prompt": "Give guidance to have the pragmatist revise, or leave blank to continue:",
                                 "agent": "pragmatist"
                             },
                             source_executor_id="system"
                         )
                         
-                        # Default: approve without steering
+                        guidance = reply_text(reply)
+                        if guidance:
+                            yield WorkflowEvent(
+                                type="agent_message",
+                                data={"agent": "you", "content": guidance},
+                                source_executor_id="you"
+                            )
                         pending_responses = {
-                            event.request_id: AgentRequestInfoResponse.approve()
+                            event.request_id: (
+                                AgentRequestInfoResponse.from_strings([guidance])
+                                if guidance
+                                else AgentRequestInfoResponse.approve()
+                            )
                         }
                 
                 elif isinstance(event, WorkflowEvent) and event.type == "output":
@@ -228,7 +239,7 @@ async def run_group_chat_workflow(
                         
                         # Request approval to send email
                         recipient, _ = _resolve_email_recipient(config)
-                        yield WorkflowEvent(
+                        reply = yield WorkflowEvent(
                             type="approval_required",
                             data={
                                 "request_id": "email_send",
@@ -237,6 +248,20 @@ async def run_group_chat_workflow(
                             },
                             source_executor_id="system"
                         )
+                        
+                        if reply_approved(reply):
+                            await asyncio.to_thread(send_summary_email_via_smtp, config, summary_text)
+                            yield WorkflowEvent(
+                                type="agent_message",
+                                data={"content": f"✓ Summary emailed to {recipient}"},
+                                source_executor_id="system"
+                            )
+                        else:
+                            yield WorkflowEvent(
+                                type="agent_message",
+                                data={"content": "✗ Summary not emailed (rejected)"},
+                                source_executor_id="system"
+                            )
                     
                     workflow_complete = True
                 

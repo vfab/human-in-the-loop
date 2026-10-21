@@ -29,7 +29,7 @@ from agent_framework_orchestrations import AgentRequestInfoResponse, SequentialB
 from agent_framework_openai import OpenAIChatCompletionClient
 from azure.identity import AzureCliCredential
 
-from . import WorkflowConfig
+from . import WorkflowConfig, reply_text
 
 logger = logging.getLogger(__name__)
 
@@ -119,6 +119,7 @@ async def run_sequential_workflow(
         # Run workflow with human-in-the-loop
         pending_responses: Optional[dict[str, AgentRequestInfoResponse]] = None
         workflow_complete = False
+        final_parts: list[str] = []
         
         while not workflow_complete:
             # Run or continue workflow
@@ -145,35 +146,49 @@ async def run_sequential_workflow(
                             source_executor_id=event.source_executor_id
                         )
                         
-                        # Request human input to steer the editor
-                        yield WorkflowEvent(
+                        # Request human input to steer the editor; the reply comes back from the yield
+                        reply = yield WorkflowEvent(
                             type="input_required",
                             data={
                                 "request_id": event.request_id,
-                                "prompt": "Provide feedback to steer the editor (or press enter to skip):",
+                                "prompt": "Give feedback to have the editor revise, or leave blank to approve:",
                                 "agent": "editor"
                             },
                             source_executor_id="system"
                         )
                         
-                        # Default: approve without steering
+                        feedback = reply_text(reply)
+                        if feedback:
+                            yield WorkflowEvent(
+                                type="agent_message",
+                                data={"agent": "you", "content": feedback},
+                                source_executor_id="you"
+                            )
                         pending_responses = {
-                            event.request_id: AgentRequestInfoResponse.approve()
+                            event.request_id: (
+                                AgentRequestInfoResponse.from_strings([feedback])
+                                if feedback
+                                else AgentRequestInfoResponse.approve()
+                            )
                         }
                 
                 elif isinstance(event, WorkflowEvent) and event.type == "output":
-                    logger.info("Workflow complete")
+                    # Streaming emits the document in small chunks; collect them
                     if event.data:
-                        yield WorkflowEvent(
-                            type="agent_message",
-                            data={"content": f"Final Document:\n{event.data}"},
-                            source_executor_id="system"
-                        )
+                        final_parts.append(str(event.data))
                     workflow_complete = True
                 
                 elif isinstance(event, WorkflowEvent) and event.type == "status":
                     if event.state == WorkflowRunState.IDLE:
                         workflow_complete = True
+        
+        final_document = "".join(final_parts).strip()
+        if final_document:
+            yield WorkflowEvent(
+                type="agent_message",
+                data={"content": f"Final Document:\n{final_document}"},
+                source_executor_id="system"
+            )
         
         yield WorkflowEvent(
             type="workflow_complete",

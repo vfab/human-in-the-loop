@@ -36,9 +36,20 @@ from agent_framework import (
 from agent_framework_openai import OpenAIChatCompletionClient
 from azure.identity import AzureCliCredential
 
-from . import WorkflowConfig
+from . import WorkflowConfig, reply_text
 
 logger = logging.getLogger(__name__)
+
+DEFAULT_MAX_NUMBER = 10
+
+
+def _parse_max_number(value: str | int) -> int:
+    """Parse the selected range, falling back to the default for blank/invalid input."""
+    try:
+        number = int(value)
+    except (TypeError, ValueError):
+        return DEFAULT_MAX_NUMBER
+    return number if 2 <= number <= 1000 else DEFAULT_MAX_NUMBER
 
 
 @dataclass
@@ -50,13 +61,17 @@ class HumanFeedbackRequest:
 class TurnManager(Executor):
     """Coordinates turns between agent and human in the guessing game."""
     
-    def __init__(self, id: str = "turn_manager"):
+    def __init__(self, id: str = "turn_manager", max_number: int = 10):
         super().__init__(id=id)
+        self.max_number = max_number
     
     @handler
     async def start(self, _: str, ctx: WorkflowContext[AgentExecutorRequest]) -> None:
         """Start the game by asking agent for initial guess."""
-        user = Message("user", ["Start by making your first guess. Guess a number between 1 and 10."])
+        user = Message(
+            "user",
+            [f"Start by making your first guess. Guess a number between 1 and {self.max_number}."],
+        )
         await ctx.send_message(AgentExecutorRequest(messages=[user], should_respond=True))
     
     @handler
@@ -68,7 +83,10 @@ class TurnManager(Executor):
         """Handle agent's guess and request human feedback."""
         # Parse agent output to extract guess
         text = result.agent_response.text or ""
-        match = re.search(r"\b(10|[1-9])\b", text)
+        match = next(
+            (m for m in re.finditer(r"\b\d+\b", text) if 1 <= int(m.group()) <= self.max_number),
+            None,
+        )
         
         if not match:
             await ctx.request_info(
@@ -83,7 +101,7 @@ class TurnManager(Executor):
             )
             return
         
-        last_guess = int(match.group(1))
+        last_guess = int(match.group())
         
         # Request human feedback
         prompt = (
@@ -127,14 +145,15 @@ class TurnManager(Executor):
             "user",
             [
                 f"Feedback: {feedback_msg}. "
-                "Return only your next guess as a single integer between 1 and 10."
+                f"Return only your next guess as a single integer between 1 and {self.max_number}."
             ],
         )
         await ctx.send_message(AgentExecutorRequest(messages=[user_msg], should_respond=True))
 
 
 async def run_game_workflow(
-    config: WorkflowConfig
+    config: WorkflowConfig,
+    max_number: str | int = DEFAULT_MAX_NUMBER,
 ) -> AsyncIterator[WorkflowEvent]:
     """Run the guessing game workflow.
     
@@ -143,10 +162,13 @@ async def run_game_workflow(
     
     Args:
         config: WorkflowConfig with Azure OpenAI settings
+        max_number: Upper bound of the range the human thinks of (default 10)
         
     Yields:
         WorkflowEvent objects for dashboard consumption
     """
+    upper = _parse_max_number(max_number)
+    
     # Validate configuration
     config_error = config.validate()
     if config_error:
@@ -189,15 +211,14 @@ async def run_game_workflow(
         )
         
         # Build workflow
-        turn_manager = TurnManager(id="turn_manager")
+        turn_manager = TurnManager(id="turn_manager", max_number=upper)
         
         workflow = (
             WorkflowBuilder(
                 name="Number Guessing Game",
-                description="Interactive game where agent guesses a number"
+                description="Interactive game where agent guesses a number",
+                start_executor=turn_manager,
             )
-            .set_start_executor(turn_manager)
-            .add_agent(guesser_agent, id="guesser")
             .add_edge(turn_manager, guesser_agent)
             .add_edge(guesser_agent, turn_manager)
             .build()
@@ -205,7 +226,7 @@ async def run_game_workflow(
         
         yield WorkflowEvent(
             type="agent_message",
-            data={"content": "Starting guessing game. Think of a number between 1 and 10..."},
+            data={"content": f"Starting guessing game. Think of a number between 1 and {upper}..."},
             source_executor_id="system"
         )
         
@@ -230,7 +251,7 @@ async def run_game_workflow(
                     # Human feedback requested
                     request_data = event.data
                     if isinstance(request_data, HumanFeedbackRequest):
-                        yield WorkflowEvent(
+                        reply = yield WorkflowEvent(
                             type="input_required",
                             data={
                                 "request_id": event.request_id,
@@ -240,8 +261,15 @@ async def run_game_workflow(
                             source_executor_id="system"
                         )
                         
-                        # Default: ask for user input from dashboard
                         guess_count += 1
+                        # Blank or timed-out replies end the game rather than loop forever
+                        answer = reply_text(reply).lower() or "exit"
+                        yield WorkflowEvent(
+                            type="agent_message",
+                            data={"agent": "you", "content": answer},
+                            source_executor_id="you"
+                        )
+                        pending_responses = {event.request_id: answer}
                 
                 elif isinstance(event, WorkflowEvent) and event.type == "agent_output":
                     # Agent made a guess
@@ -255,15 +283,17 @@ async def run_game_workflow(
                     )
                 
                 elif isinstance(event, WorkflowEvent) and event.type == "output":
-                    # Game completed
-                    logger.info("Guessing game complete")
-                    if event.data:
-                        yield WorkflowEvent(
-                            type="agent_message",
-                            data={"content": str(event.data)},
-                            source_executor_id="system"
-                        )
-                    workflow_complete = True
+                    # The guesser agent also streams its text as output events;
+                    # only the turn manager's output means the game is over.
+                    if event.executor_id == "turn_manager":
+                        logger.info("Guessing game complete")
+                        if event.data:
+                            yield WorkflowEvent(
+                                type="agent_message",
+                                data={"content": str(event.data)},
+                                source_executor_id="system"
+                            )
+                        workflow_complete = True
                 
                 elif isinstance(event, WorkflowEvent) and event.type == "status":
                     if event.state == WorkflowRunState.IDLE:
