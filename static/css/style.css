@@ -278,9 +278,19 @@ body {
     border-radius: 4px;
     font-family: var(--font-family);
     font-size: 14px;
-    min-height: 140px;
+    min-height: 56px;
     margin-bottom: var(--spacing-sm);
     resize: vertical;
+}
+
+#workflowInput.invalid {
+    border-color: var(--color-danger);
+}
+
+.input-error {
+    color: var(--color-danger);
+    font-size: 13px;
+    margin-bottom: var(--spacing-sm);
 }
 
 #workflowInput:focus {
@@ -354,6 +364,29 @@ body {
     color: var(--color-text-lighter);
     font-family: var(--font-family);
     margin: 0;
+}
+
+.working-indicator {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-sm);
+    color: var(--color-text-light);
+    font-family: var(--font-family);
+    font-size: 13px;
+    font-style: italic;
+}
+
+.working-indicator .spinner {
+    width: 14px;
+    height: 14px;
+    border: 2px solid var(--color-border-dark);
+    border-top-color: var(--color-primary);
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+    to { transform: rotate(360deg); }
 }
 
 .output-message {
@@ -458,14 +491,34 @@ body {
     overflow-y: auto;
 }
 
+/* Input bar: docked under the output so the conversation stays readable */
+.input-bar {
+    flex-shrink: 0;
+    flex-direction: column;
+    gap: var(--spacing-sm);
+    padding: var(--spacing-sm) var(--spacing-md);
+    border-top: 2px solid var(--color-primary);
+    background-color: #f0f4ff;
+}
+
+.input-bar-prompt {
+    font-weight: 600;
+    font-size: 14px;
+}
+
+.input-bar-row {
+    display: flex;
+    gap: var(--spacing-sm);
+}
+
 #inputField {
-    width: 100%;
+    flex: 1;
+    min-width: 0;
     padding: var(--spacing-sm);
     border: 1px solid var(--color-border);
     border-radius: 4px;
     font-family: var(--font-family);
     font-size: 14px;
-    margin-bottom: var(--spacing-lg);
 }
 
 #inputField:focus {
@@ -478,7 +531,6 @@ body {
     display: flex;
     flex-wrap: wrap;
     gap: var(--spacing-sm);
-    margin-bottom: var(--spacing-sm);
 }
 
 .input-options:empty {
@@ -489,6 +541,77 @@ body {
     display: flex;
     gap: var(--spacing-md);
     justify-content: flex-end;
+}
+
+/* Batch approval: each response sits beside its own Approve/Reject buttons */
+.modal-content.modal-wide {
+    max-width: 900px;
+}
+
+.modal-content.modal-wide .modal-buttons {
+    position: sticky;
+    bottom: calc(-1 * var(--spacing-lg));
+    background-color: var(--color-bg);
+    padding: var(--spacing-sm) 0 var(--spacing-lg);
+    margin-bottom: calc(-1 * var(--spacing-lg));
+}
+
+.batch-list {
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-md);
+    margin-bottom: var(--spacing-lg);
+}
+
+.batch-item {
+    display: flex;
+    gap: var(--spacing-md);
+    align-items: flex-start;
+    border: 1px solid var(--color-border);
+    border-left: 4px solid var(--color-border-dark);
+    border-radius: 4px;
+    padding: var(--spacing-sm) var(--spacing-md);
+}
+
+.batch-item.approved {
+    border-left-color: var(--color-success);
+}
+
+.batch-item.rejected {
+    border-left-color: var(--color-danger);
+}
+
+.batch-item-body {
+    flex: 1;
+    min-width: 0;
+}
+
+.batch-item-agent {
+    font-weight: 600;
+    margin-bottom: var(--spacing-xs);
+}
+
+.batch-item-text {
+    font-size: 13px;
+    line-height: 1.6;
+    white-space: pre-wrap;
+    word-wrap: break-word;
+}
+
+.batch-item-actions {
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-xs);
+    flex-shrink: 0;
+}
+
+.batch-item-actions .btn {
+    opacity: 0.55;
+}
+
+.batch-item.approved .btn-success,
+.batch-item.rejected .btn-danger {
+    opacity: 1;
 }
 
 /* ============================================================================

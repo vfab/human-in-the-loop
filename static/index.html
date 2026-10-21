@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>HITL Demo Dashboard</title>
-    <link rel="stylesheet" href="/static/css/style.css?v=5">
+    <link rel="stylesheet" href="/static/css/style.css?v=11">
 </head>
 <body>
     <div class="container">
@@ -51,7 +51,8 @@
                                 <option value="">Sample inputs…</option>
                             </select>
                         </div>
-                        <textarea id="workflowInput" placeholder="Enter input text..." rows="6"></textarea>
+                        <textarea id="workflowInput" placeholder="Enter input text..." rows="2"></textarea>
+                        <div class="input-error" id="inputError" style="display: none;"></div>
                         <button class="btn btn-primary" id="startButton">Start Workflow</button>
                     </div>
 
@@ -79,17 +80,26 @@
                         </div>
                     </div>
 
-                    <!-- Input Modal -->
-                    <div class="modal" id="inputModal" style="display: none;">
-                        <div class="modal-content">
-                            <h3>Input Required</h3>
-                            <p id="inputPrompt"></p>
-                            <div class="input-options" id="inputOptions"></div>
-                            <input type="text" id="inputField" placeholder="Enter your response..." />
+                    <!-- Batch Approval Modal: one row per item, each with its own Approve/Reject -->
+                    <div class="modal" id="batchModal" style="display: none;">
+                        <div class="modal-content modal-wide">
+                            <h3 id="batchTitle">Review Responses</h3>
+                            <div class="batch-list" id="batchList"></div>
                             <div class="modal-buttons">
-                                <button class="btn btn-primary" id="submitInputButton">Submit</button>
-                                <button class="btn btn-secondary" id="cancelInputButton">Skip</button>
+                                <button class="btn btn-secondary" id="batchApproveAllButton">Approve all</button>
+                                <button class="btn btn-primary" id="batchSubmitButton" disabled>Submit</button>
                             </div>
+                        </div>
+                    </div>
+
+                    <!-- Input Bar: docked under the output so the conversation stays visible -->
+                    <div class="input-bar" id="inputModal" style="display: none;">
+                        <div class="input-bar-prompt" id="inputPrompt"></div>
+                        <div class="input-options" id="inputOptions"></div>
+                        <div class="input-bar-row">
+                            <input type="text" id="inputField" placeholder="Type your response, or leave blank to skip..." />
+                            <button class="btn btn-primary" id="submitInputButton">Submit</button>
+                            <button class="btn btn-secondary" id="cancelInputButton">Skip</button>
                         </div>
                     </div>
                 </div>
@@ -103,6 +113,6 @@
         </footer>
     </div>
 
-    <script src="/static/js/dashboard.js?v=7"></script>
+    <script src="/static/js/dashboard.js?v=12"></script>
 </body>
 </html>

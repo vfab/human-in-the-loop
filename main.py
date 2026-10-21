@@ -98,6 +98,7 @@ app = FastAPI(
 _config: WorkflowConfig | None = None
 _workflow_runners: dict[str, Any] = {}  # Placeholder for workflow runner functions
 _active_runs: dict[str, dict[str, Any]] = {}  # Track running workflows
+_TOPIC_REQUIRED = {"concurrent", "group_chat", "sequential"}  # Workflows that need a user topic
 
 
 @app.on_event("startup")
@@ -207,6 +208,9 @@ async def start_workflow(workflow_id: str, body: dict[str, Any]) -> dict[str, An
     run_id = str(uuid.uuid4())
     input_text = body.get("input", "")
     
+    if workflow_id in _TOPIC_REQUIRED and not str(input_text).strip():
+        raise HTTPException(status_code=400, detail="A topic is required for this workflow")
+    
     _active_runs[run_id] = {
         "workflow_id": workflow_id,
         "input": input_text,
@@ -240,6 +244,7 @@ async def submit_approval(workflow_id: str, body: dict[str, Any]) -> dict[str, A
     request_id = body.get("request_id")
     approved = body.get("approved", False)
     feedback = body.get("feedback", "")
+    decisions = body.get("decisions") or {}
     
     if run_id not in _active_runs:
         raise HTTPException(status_code=404, detail="Run not found")
@@ -248,6 +253,7 @@ async def submit_approval(workflow_id: str, body: dict[str, Any]) -> dict[str, A
         "type": "approval",
         "approved": approved,
         "feedback": feedback,
+        "decisions": decisions,
     })
     
     logger.info("Approval submitted for run %s request %s: %s", run_id, request_id, approved)
@@ -498,6 +504,28 @@ async def websocket_workflow_stream(websocket: WebSocket, workflow_id: str, run_
                             "severity": "warning",
                         })
                 
+                # Send a batch of items to approve individually (one modal, one decision each)
+                elif event_type == "approval_batch":
+                    data = event_data if isinstance(event_data, dict) else {}
+                    request_id = data.get("request_id", str(uuid.uuid4()))
+                    
+                    reply = await _request_response(websocket, run_id, request_id, {
+                        "type": "approval_batch",
+                        "timestamp": datetime.utcnow().isoformat(),
+                        "request_id": request_id,
+                        "prompt": data.get("prompt", "Review each item"),
+                        "items": data.get("items", []),
+                        "severity": "info",
+                    })
+                    if reply is None:
+                        await websocket.send_json({
+                            "type": "agent_message",
+                            "timestamp": datetime.utcnow().isoformat(),
+                            "agent_name": "system",
+                            "content": "No response received within 5 minutes; accepted all responses as-is.",
+                            "severity": "warning",
+                        })
+                
                 # Send input requests and wait for the human's text
                 elif event_type == "input_required":
                     data = event_data if isinstance(event_data, dict) else {}
@@ -521,6 +549,16 @@ async def websocket_workflow_stream(websocket: WebSocket, workflow_id: str, run_
                             "content": "No response received within 5 minutes; continuing without input.",
                             "severity": "warning",
                         })
+                
+                # Progress notes shown while the workflow works between human steps
+                elif event_type == "progress":
+                    data = event_data if isinstance(event_data, dict) else {}
+                    await websocket.send_json({
+                        "type": "progress",
+                        "timestamp": datetime.utcnow().isoformat(),
+                        "content": data.get("message", "Working..."),
+                        "severity": "info",
+                    })
                 
                 # Send workflow complete
                 elif event_type == "workflow_complete":

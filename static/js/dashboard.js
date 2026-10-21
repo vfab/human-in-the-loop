@@ -101,6 +101,7 @@ class HITLDashboard {
             this.abortRun();
         }
         this.currentWorkflow = workflow;
+        this.clearInputError();
         
         // Update UI
         this.updateUIForWorkflow();
@@ -110,6 +111,20 @@ class HITLDashboard {
         
         // Clear previous output
         this.clearOutput();
+    }
+
+    showInputError(message) {
+        const error = document.getElementById('inputError');
+        error.textContent = message;
+        error.style.display = '';
+        const field = document.getElementById('workflowInput');
+        field.classList.add('invalid');
+        field.focus();
+    }
+
+    clearInputError() {
+        document.getElementById('inputError').style.display = 'none';
+        document.getElementById('workflowInput').classList.remove('invalid');
     }
 
     usesTextBox(workflow = this.currentWorkflow) {
@@ -203,6 +218,10 @@ class HITLDashboard {
         document.getElementById('approveButton').addEventListener('click', () => this.submitApproval(true));
         document.getElementById('rejectButton').addEventListener('click', () => this.submitApproval(false));
         
+        // Batch approval modal
+        document.getElementById('batchApproveAllButton').addEventListener('click', () => this.approveAllBatch());
+        document.getElementById('batchSubmitButton').addEventListener('click', () => this.submitBatch());
+        
         // Input modal
         document.getElementById('submitInputButton').addEventListener('click', () => this.submitInput());
         document.getElementById('cancelInputButton').addEventListener('click', () => this.submitInput(''));
@@ -213,6 +232,7 @@ class HITLDashboard {
         });
         
         // Close workflow input
+        document.getElementById('workflowInput').addEventListener('input', () => this.clearInputError());
         document.getElementById('workflowInput').addEventListener('keypress', (e) => {
             if (e.ctrlKey && e.key === 'Enter') this.startWorkflow();
         });
@@ -222,6 +242,13 @@ class HITLDashboard {
         if (!this.currentWorkflow) return;
         
         const input = this.currentInputValue();
+        
+        // Workflows with a text box need a topic before they can start
+        if (this.usesTextBox() && !input.trim()) {
+            this.showInputError('Please enter a topic, or pick a sample input, before starting.');
+            return;
+        }
+        this.clearInputError();
         
         try {
             // Start the workflow
@@ -297,13 +324,25 @@ class HITLDashboard {
     handleWorkflowEvent(event) {
         console.log(`[Event] ${event.type}:`, event);
         
+        // The indicator is re-added below whenever the workflow is still busy
+        this.hideWorking();
+        
         switch (event.type) {
             case 'agent_message':
                 this.addMessage(event.agent_name || 'agent', event.content, event.severity);
+                this.showWorking();
+                break;
+                
+            case 'progress':
+                this.showWorking(event.content);
                 break;
                 
             case 'approval_required':
                 this.showApprovalModal(event);
+                break;
+                
+            case 'approval_batch':
+                this.showBatchModal(event);
                 break;
                 
             case 'input_required':
@@ -326,8 +365,32 @@ class HITLDashboard {
                 
             case 'workflow_start':
                 this.addMessage('system', event.content);
+                this.showWorking();
                 break;
         }
+    }
+
+    // Spinner line at the end of the output while the workflow is busy between human steps
+    showWorking(text = 'Working…') {
+        const output = document.getElementById('outputContent');
+        let indicator = document.getElementById('workingIndicator');
+        if (!indicator) {
+            indicator = document.createElement('div');
+            indicator.id = 'workingIndicator';
+            indicator.className = 'working-indicator';
+            indicator.innerHTML = '<span class="spinner"></span><span class="working-text"></span>';
+            if (output.querySelector('.placeholder')) {
+                output.innerHTML = '';
+            }
+            output.appendChild(indicator);
+        }
+        indicator.querySelector('.working-text').textContent = text;
+        output.scrollTop = output.scrollHeight;
+    }
+
+    hideWorking() {
+        const indicator = document.getElementById('workingIndicator');
+        if (indicator) indicator.remove();
     }
 
     addMessage(agent, content, severity = 'info') {
@@ -355,7 +418,9 @@ class HITLDashboard {
             output.innerHTML = '';
         }
         
-        output.appendChild(message);
+        // Keep the working indicator (if any) as the last line
+        const indicator = document.getElementById('workingIndicator');
+        output.insertBefore(message, indicator);
         
         // Scroll to bottom
         output.scrollTop = output.scrollHeight;
@@ -397,12 +462,115 @@ class HITLDashboard {
         
         const field = document.getElementById('inputField');
         field.value = '';
-        field.focus();
         
         // Store request ID for later submission
         this.currentRequestId = event.request_id;
         
         modal.style.display = 'flex';
+        field.focus();
+        const output = document.getElementById('outputContent');
+        output.scrollTop = output.scrollHeight;
+    }
+
+    showBatchModal(event) {
+        this.currentRequestId = event.request_id;
+        this.batchDecisions = {};
+        document.getElementById('batchTitle').textContent = event.prompt || 'Review responses';
+        
+        const list = document.getElementById('batchList');
+        list.innerHTML = '';
+        (event.items || []).forEach(item => {
+            const row = document.createElement('div');
+            row.className = 'batch-item';
+            row.dataset.requestId = item.request_id;
+            
+            const body = document.createElement('div');
+            body.className = 'batch-item-body';
+            const agent = document.createElement('div');
+            agent.className = 'batch-item-agent';
+            agent.textContent = item.label || item.agent;
+            const text = document.createElement('div');
+            text.className = 'batch-item-text';
+            text.textContent = item.content;
+            body.append(agent, text);
+            
+            const actions = document.createElement('div');
+            actions.className = 'batch-item-actions';
+            const approve = document.createElement('button');
+            approve.className = 'btn btn-success';
+            approve.textContent = '✓ Approve';
+            approve.addEventListener('click', () => this.setBatchDecision(item.request_id, true));
+            const reject = document.createElement('button');
+            reject.className = 'btn btn-danger';
+            reject.textContent = '✗ Reject';
+            reject.addEventListener('click', () => this.setBatchDecision(item.request_id, false));
+            actions.append(approve, reject);
+            
+            row.append(body, actions);
+            list.appendChild(row);
+        });
+        
+        this.updateBatchSubmit();
+        document.getElementById('batchModal').style.display = 'flex';
+    }
+
+    setBatchDecision(requestId, approved) {
+        this.batchDecisions[requestId] = approved;
+        const row = document.querySelector(`.batch-item[data-request-id="${requestId}"]`);
+        row.classList.toggle('approved', approved);
+        row.classList.toggle('rejected', !approved);
+        this.updateBatchSubmit();
+    }
+
+    approveAllBatch() {
+        document.querySelectorAll('.batch-item').forEach(row => {
+            this.setBatchDecision(row.dataset.requestId, true);
+        });
+    }
+
+    // Submit is available once every item has an explicit decision
+    updateBatchSubmit() {
+        const rows = document.querySelectorAll('.batch-item');
+        const decided = Object.keys(this.batchDecisions).length;
+        document.getElementById('batchSubmitButton').disabled = rows.length === 0 || decided < rows.length;
+    }
+
+    async submitBatch() {
+        if (!this.currentWorkflow || !this.currentRunId) return;
+        
+        try {
+            const response = await fetch(
+                `/api/workflows/${this.currentWorkflow.id}/approve`,
+                {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        run_id: this.currentRunId,
+                        request_id: this.currentRequestId,
+                        approved: Object.values(this.batchDecisions).every(Boolean),
+                        decisions: this.batchDecisions
+                    })
+                }
+            );
+            
+            if (!response.ok) {
+                throw new Error(`HTTP ${response.status}`);
+            }
+            
+            const approvedCount = Object.values(this.batchDecisions).filter(Boolean).length;
+            const total = Object.keys(this.batchDecisions).length;
+            this.closeBatchModal();
+            this.addMessage('system', `${approvedCount} of ${total} responses approved`);
+            this.showWorking();
+            
+        } catch (error) {
+            console.error('[Dashboard] Failed to submit decisions:', error);
+            this.showError(`Failed to submit decisions: ${error.message}`);
+        }
+    }
+
+    closeBatchModal() {
+        document.getElementById('batchModal').style.display = 'none';
     }
 
     closeApprovalModal() {
@@ -411,6 +579,7 @@ class HITLDashboard {
 
     closeModals() {
         this.closeApprovalModal();
+        this.closeBatchModal();
         this.closeInputModal();
     }
 
@@ -449,6 +618,7 @@ class HITLDashboard {
                 'system',
                 approved ? '✓ Response approved' : '✗ Response rejected'
             );
+            this.showWorking();
             
         } catch (error) {
             console.error('[Dashboard] Failed to submit approval:', error);
@@ -483,6 +653,7 @@ class HITLDashboard {
             }
             
             this.closeInputModal();
+            this.showWorking();
             
         } catch (error) {
             console.error('[Dashboard] Failed to submit input:', error);
@@ -491,6 +662,7 @@ class HITLDashboard {
     }
 
     abortRun() {
+        this.hideWorking();
         if (this.ws) {
             this.ws.onclose = null;
             this.ws.close();

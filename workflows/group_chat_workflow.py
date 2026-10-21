@@ -7,20 +7,17 @@ Extracted from: group_chat_request_info.py
 
 This workflow demonstrates a sequential team discussion where three agents
 (optimist, pragmatist, creative) discuss a topic with human-in-the-loop
-steering before the pragmatist speaks, followed by email delivery of the
-discussion summary.
+steering before the pragmatist speaks, followed by an in-app approval of the
+whole discussion. Nothing is emailed.
 
 Flow:
 1. Optimist kicks off the discussion
 2. Pragmatist responds (with human steering opportunity)
 3. Creative provides alternative perspective
-4. Discussion is synthesized and emailed with approval
+4. The human accepts or rejects the overall discussion
 """
 
-import asyncio
 import logging
-import smtplib
-from email.message import EmailMessage
 from typing import Any, AsyncIterator, Optional
 
 from agent_framework import (
@@ -36,46 +33,17 @@ from . import WorkflowConfig, reply_approved, reply_text
 
 logger = logging.getLogger(__name__)
 
+# Display names shown in the dashboard for each group member
+MEMBER_LABELS = {
+    "optimist": "Optimist",
+    "pragmatist": "Pragmatist",
+    "creative": "Creative",
+}
+
 
 def _safe_attr(obj: Any, name: str, default: Any = None) -> Any:
     """Read attribute if present, otherwise return default."""
     return getattr(obj, name, default)
-
-
-def _resolve_email_recipient(config: WorkflowConfig) -> tuple[str, str]:
-    """Resolve the email recipient from configuration."""
-    if config.email_recipient:
-        return config.email_recipient, "configured EMAIL_RECIPIENT"
-    
-    if config.smtp_user:
-        return config.smtp_user, "SMTP_USER fallback"
-    
-    raise ValueError("Missing recipient config. Set EMAIL_RECIPIENT or SMTP_USER.")
-
-
-def send_summary_email_via_smtp(config: WorkflowConfig, summary: str) -> str:
-    """Send the discussion summary via SMTP."""
-    recipient, recipient_source = _resolve_email_recipient(config)
-    
-    if not config.smtp_user or not config.smtp_password:
-        raise ValueError("Missing SMTP auth. Set SMTP_USER and SMTP_PASSWORD.")
-    
-    logger.info("Sending email to: %s (%s)", recipient, recipient_source)
-    
-    message = EmailMessage()
-    message["From"] = config.smtp_user
-    message["To"] = recipient
-    message["Subject"] = "Group Discussion Summary - AI Tools Adoption"
-    message.set_content(summary)
-    
-    smtp_host = config.smtp_host or "smtp.gmail.com"
-    smtp_port = config.smtp_port or 465
-    
-    with smtplib.SMTP_SSL(smtp_host, smtp_port) as smtp:
-        smtp.login(config.smtp_user, config.smtp_password)
-        smtp.send_message(message)
-    
-    return recipient
 
 
 async def run_group_chat_workflow(
@@ -85,10 +53,11 @@ async def run_group_chat_workflow(
     """Run the group chat workflow.
     
     Demonstrates sequential team discussion with human steering
-    before the pragmatist's response, followed by email delivery.
+    before the pragmatist's response, then an in-app approval of the discussion.
+    No email is sent.
     
     Args:
-        config: WorkflowConfig with Azure OpenAI and SMTP settings
+        config: WorkflowConfig with Azure OpenAI settings
         topic: Discussion topic
         
     Yields:
@@ -170,6 +139,8 @@ async def run_group_chat_workflow(
         pending_responses: Optional[dict[str, AgentRequestInfoResponse]] = None
         workflow_complete = False
         full_conversation: list[Any] = []
+        transcript: dict[str, str] = {}  # member -> latest reply, in speaking order
+        steered = False
         summary_text = ""
         
         while not workflow_complete:
@@ -192,27 +163,32 @@ async def run_group_chat_workflow(
                         )
                         
                         # Display pragmatist's response for steering
+                        transcript["pragmatist"] = agent_response
                         yield WorkflowEvent(
                             type="agent_message",
                             data={
-                                "agent": event.source_executor_id,
+                                "agent": MEMBER_LABELS.get(event.source_executor_id, event.source_executor_id),
                                 "content": agent_response
                             },
                             source_executor_id=event.source_executor_id
                         )
                         
-                        # Request human steering input; the reply comes back from the yield
-                        reply = yield WorkflowEvent(
-                            type="input_required",
-                            data={
-                                "request_id": event.request_id,
-                                "prompt": "Give guidance to have the pragmatist revise, or leave blank to continue:",
-                                "agent": "pragmatist"
-                            },
-                            source_executor_id="system"
-                        )
+                        # Single steering checkpoint: after one round of guidance the revised
+                        # reply is accepted without asking again.
+                        guidance = ""
+                        if not steered:
+                            steered = True
+                            reply = yield WorkflowEvent(
+                                type="input_required",
+                                data={
+                                    "request_id": event.request_id,
+                                    "prompt": "Give guidance to have the pragmatist revise, or leave blank to continue:",
+                                    "agent": "pragmatist"
+                                },
+                                source_executor_id="system"
+                            )
+                            guidance = reply_text(reply)
                         
-                        guidance = reply_text(reply)
                         if guidance:
                             yield WorkflowEvent(
                                 type="agent_message",
@@ -227,47 +203,63 @@ async def run_group_chat_workflow(
                             )
                         }
                 
+                elif (
+                    isinstance(event, WorkflowEvent)
+                    and event.type == "executor_completed"
+                    and isinstance(event.data, list)
+                ):
+                    # Each member's finished reply arrives here (only the last speaker is
+                    # streamed as "output"). The pragmatist is shown at its steering prompt.
+                    for item in event.data:
+                        if not isinstance(item, AgentExecutorResponse):
+                            continue
+                        member = item.executor_id
+                        text = (item.agent_response.text or "").strip()
+                        if not text:
+                            continue
+                        transcript[member] = text
+                        if member != "pragmatist":
+                            yield WorkflowEvent(
+                                type="agent_message",
+                                data={"agent": MEMBER_LABELS.get(member, member), "content": text},
+                                source_executor_id=member
+                            )
+                
                 elif isinstance(event, WorkflowEvent) and event.type == "output":
-                    logger.info("Group discussion complete")
-                    if event.data:
-                        summary_text = str(event.data)
-                        yield WorkflowEvent(
-                            type="agent_message",
-                            data={"content": f"Discussion Summary:\n{summary_text}"},
-                            source_executor_id="system"
-                        )
-                        
-                        # Request approval to send email
-                        recipient, _ = _resolve_email_recipient(config)
-                        reply = yield WorkflowEvent(
-                            type="approval_required",
-                            data={
-                                "request_id": "email_send",
-                                "prompt": f"Send this summary via email to {recipient}?",
-                                "content": summary_text
-                            },
-                            source_executor_id="system"
-                        )
-                        
-                        if reply_approved(reply):
-                            await asyncio.to_thread(send_summary_email_via_smtp, config, summary_text)
-                            yield WorkflowEvent(
-                                type="agent_message",
-                                data={"content": f"✓ Summary emailed to {recipient}"},
-                                source_executor_id="system"
-                            )
-                        else:
-                            yield WorkflowEvent(
-                                type="agent_message",
-                                data={"content": "✗ Summary not emailed (rejected)"},
-                                source_executor_id="system"
-                            )
-                    
+                    # The final speaker streams its reply in tiny chunks; the complete
+                    # text is handled via executor_completed, so just note we are done.
                     workflow_complete = True
                 
                 elif isinstance(event, WorkflowEvent) and event.type == "status":
                     if event.state == WorkflowRunState.IDLE:
                         workflow_complete = True
+            
+            if workflow_complete and transcript:
+                summary_text = "\n\n".join(
+                    f"{MEMBER_LABELS.get(member, member)}: {text}"
+                    for member, text in transcript.items()
+                )
+                logger.info("Group discussion complete")
+                
+                # One in-app approval for the whole discussion
+                reply = yield WorkflowEvent(
+                    type="approval_required",
+                    data={
+                        "request_id": "discussion_review",
+                        "prompt": "Accept this discussion?",
+                        "content": summary_text
+                    },
+                    source_executor_id="system"
+                )
+                
+                yield WorkflowEvent(
+                    type="agent_message",
+                    data={"content": (
+                        "✓ Discussion accepted" if reply_approved(reply)
+                        else "✗ Discussion rejected"
+                    )},
+                    source_executor_id="system"
+                )
         
         yield WorkflowEvent(
             type="workflow_complete",

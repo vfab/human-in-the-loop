@@ -28,14 +28,27 @@ def post(path: str, body: dict) -> None:
     urllib.request.urlopen(req).read()
 
 
-async def run(workflow_id: str) -> None:
+def post_json(path: str, body: dict) -> dict:
     req = urllib.request.Request(
-        f"http://{BASE}/api/workflows/{workflow_id}/start",
-        data=b"{}",
+        f"http://{BASE}{path}",
+        data=json.dumps(body).encode(),
         headers={"Content-Type": "application/json"},
         method="POST",
     )
-    run_id = json.load(urllib.request.urlopen(req))["run_id"]
+    return json.load(urllib.request.urlopen(req))
+
+
+# Workflows that require a topic, so the smoke test supplies one
+TOPICS = {
+    "sequential": "Write one sentence about the moon.",
+    "concurrent": "Analyze the impact of remote work on productivity.",
+    "group_chat": "Discuss how our team should adopt AI tools.",
+}
+
+
+async def run(workflow_id: str) -> None:
+    run_id = post_json(f"/api/workflows/{workflow_id}/start",
+                       {"input": TOPICS.get(workflow_id, "")})["run_id"]
     print("==", workflow_id)
     steered = False
     try:
@@ -45,7 +58,12 @@ async def run(workflow_id: str) -> None:
                 text = msg.get("prompt") or msg.get("content")
                 print(" <-", msg.get("type"), str(text)[:140].replace("\n", " "))
                 kind = msg.get("type")
-                if kind == "approval_required":
+                if kind == "approval_batch":
+                    decisions = {item["request_id"]: True for item in msg["items"]}
+                    post(f"/api/workflows/{workflow_id}/approve",
+                         {"run_id": run_id, "request_id": msg["request_id"],
+                          "approved": True, "decisions": decisions})
+                elif kind == "approval_required":
                     post(f"/api/workflows/{workflow_id}/approve",
                          {"run_id": run_id, "request_id": msg["request_id"], "approved": True})
                 elif kind == "input_required":
