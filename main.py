@@ -38,7 +38,8 @@ import asyncio
 import logging
 import os
 import uuid
-from datetime import datetime
+from contextlib import asynccontextmanager
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any, AsyncIterator
 
@@ -93,7 +94,8 @@ class WorkflowEventMessage(BaseModel):
 app = FastAPI(
     title="HITL Demo Dashboard",
     description="Human-In-The-Loop demonstration workflows",
-    version="1.0.0"
+    version="1.0.0",
+    lifespan=lifespan
 )
 
 # Configuration loaded once at startup
@@ -101,11 +103,19 @@ _config: WorkflowConfig | None = None
 _workflow_runners: dict[str, Any] = {}  # Placeholder for workflow runner functions
 _active_runs: dict[str, dict[str, Any]] = {}  # Track running workflows
 _TOPIC_REQUIRED = {"concurrent", "group_chat", "sequential", "handoff", "magentic"}  # Workflows that need a user topic
+_STALE_RUN_MAX_AGE_DAYS = int(os.getenv("STALE_RUN_MAX_AGE_DAYS", "7"))  # Cleanup runs older than N days
 
 
-@app.on_event("startup")
-async def startup():
-    """Initialize configuration and workflow registry."""
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """FastAPI lifespan context manager: startup and shutdown logic.
+    
+    Replaces deprecated @app.on_event("startup"/"shutdown") decorators.
+    Runs once when server starts, and cleanup code runs when server stops.
+    
+    See: https://fastapi.tiangolo.com/advanced/events/#alternative-events-deprecated
+    """
+    # ========== STARTUP ==========
     global _config
     _config = WorkflowConfig.from_env()
     
@@ -127,6 +137,49 @@ async def startup():
     
     logger.info("HITL Dashboard starting on http://localhost:8000")
     logger.info("Available workflows: %s", list(_workflow_runners.keys()))
+    
+    # Clean up stale runs from previous server instances
+    _cleanup_stale_runs()
+    
+    yield  # Server runs here
+    
+    # ========== SHUTDOWN ==========
+    logger.info("HITL Dashboard shutting down")
+    # Optional: Add cleanup code here (close connections, flush logs, etc.)
+    # For now, nothing additional needed
+
+
+def _cleanup_stale_runs() -> None:
+    """Remove runs older than _STALE_RUN_MAX_AGE_DAYS from memory.
+    
+    This prevents memory leaks from long-running server instances.
+    Runs are stored in memory, so old runs should be pruned periodically.
+    """
+    cutoff_time = datetime.utcnow() - timedelta(days=_STALE_RUN_MAX_AGE_DAYS)
+    stale_run_ids = []
+    
+    for run_id, run_info in _active_runs.items():
+        started_at_str = run_info.get("started_at", "")
+        if not started_at_str:
+            continue
+        
+        try:
+            started_at = datetime.fromisoformat(started_at_str)
+            if started_at < cutoff_time:
+                stale_run_ids.append(run_id)
+        except (ValueError, TypeError):
+            # Malformed timestamp, skip
+            continue
+    
+    for run_id in stale_run_ids:
+        del _active_runs[run_id]
+    
+    if stale_run_ids:
+        logger.info("Cleaned up %d stale runs (older than %d days)", 
+                   len(stale_run_ids), _STALE_RUN_MAX_AGE_DAYS)
+    else:
+        logger.debug("No stale runs to clean up")
+
 
 
 # ============================================================================
