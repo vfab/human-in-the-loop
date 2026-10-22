@@ -25,6 +25,20 @@ const SAMPLE_INPUTS = {
         'Write a one-paragraph summary of the benefits of unit testing.',
         'Write a friendly email inviting the team to a quarterly planning meeting.',
     ],
+    handoff: [
+        'I need technical support with setting up a development environment.',
+        'How do I reset my password for the customer portal?',
+        'I think there\'s a bug in the payment processing system - it charged me twice.',
+        'Can I upgrade my account to a higher tier?',
+        'I\'m having performance issues with the API integration.',
+    ],
+    magentic: [
+        'Analyze market trends in cloud infrastructure for 2025.',
+        'Research the impact of AI on software engineering productivity.',
+        'Evaluate strategies for reducing technical debt in legacy systems.',
+        'Assess opportunities and risks of microservices architecture adoption.',
+        'Analyze competitive positioning of Python vs Go for backend services.',
+    ],
     // These workflows have no text box: the selected value is sent as the run input.
     approval: [
         { label: 'Default: status update + urgent budget review (2 emails)', value: 'default' },
