@@ -157,46 +157,39 @@ async def list_workflows() -> list[WorkflowMetadata]:
     """List all available workflows."""
     workflows = [
         WorkflowMetadata(
-            id="concurrent",
-            name="Concurrent Request Analysis",
-            description="Multi-perspective analysis with concurrent agents and approval",
-            input_required=True,
-            input_placeholder="Enter topic to analyze..."
-        ),
-        WorkflowMetadata(
-            id="group_chat",
-            name="Group Chat Request",
-            description="Sequential group chat with steering input",
-            input_required=True,
-            input_placeholder="Enter discussion topic..."
-        ),
-        WorkflowMetadata(
             id="sequential",
-            name="Sequential Request",
+            name="Sequential",
             description="Sequential workflow with human steering",
             input_required=True,
             input_placeholder="Enter content to review..."
         ),
         WorkflowMetadata(
+            id="concurrent",
+            name="Concurrent",
+            description="Multi-perspective analysis with concurrent agents and approval",
+            input_required=True,
+            input_placeholder="Enter topic to analyze..."
+        ),
+        WorkflowMetadata(
             id="handoff",
-            name="Handoff Orchestration",
+            name="Handoff",
             description="Agent Framework pattern: Customer support with automatic handoff between agents",
             input_required=True,
             input_placeholder="Describe your support issue..."
         ),
         WorkflowMetadata(
+            id="group_chat",
+            name="Group Chat",
+            description="Sequential group chat with steering input",
+            input_required=True,
+            input_placeholder="Enter discussion topic..."
+        ),
+        WorkflowMetadata(
             id="magentic",
-            name="Magentic Orchestration",
+            name="Magentic",
             description="Agent Framework pattern: Manager-coordinated multi-agent analysis",
             input_required=True,
             input_placeholder="Enter task for analysis..."
-        ),
-        WorkflowMetadata(
-            id="approval",
-            name="Approval Workflow",
-            description="Email assistant with human-in-the-loop approval",
-            input_required=False,
-            input_placeholder=""
         ),
         WorkflowMetadata(
             id="game",
