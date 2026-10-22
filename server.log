@@ -1,0 +1,14 @@
+INFO:     127.0.0.1:56672 - "GET /health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56673 - "POST /api/workflows/handoff/start HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56681 - "POST /api/workflows/handoff/start HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56690 - "POST /api/workflows/handoff/start HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56698 - "POST /api/workflows/magentic/start HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63563 - "POST /api/workflows/magentic/start HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59391 - "POST /api/workflows/magentic/start HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53463 - "GET /health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53464 - "POST /api/workflows/handoff/start HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53471 - "POST /api/workflows/handoff/start HTTP/1.1" 200 OK
+INFO:     127.0.0.1:62726 - "POST /api/workflows/handoff/start HTTP/1.1" 200 OK
+INFO:     127.0.0.1:62732 - "POST /api/workflows/magentic/start HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59975 - "POST /api/workflows/magentic/start HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54037 - "POST /api/workflows/magentic/start HTTP/1.1" 200 OK

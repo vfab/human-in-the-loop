@@ -71,7 +71,7 @@ async def test_workflow(workflow_id: str, test_name: str, topic: str, max_events
         # Start the workflow
         result = post_json(f"/api/workflows/{workflow_id}/start", {"input": topic})
         run_id = result["run_id"]
-        print(f"✓ Workflow started (run_id: {run_id})")
+        print(f"[OK] Workflow started (run_id: {run_id})")
         
         # Connect via WebSocket
         uri = f"ws://{BASE}/ws/workflow/{workflow_id}/{run_id}"
@@ -103,11 +103,11 @@ async def test_workflow(workflow_id: str, test_name: str, topic: str, max_events
                     
                     # Exit on workflow complete or error
                     if event_type in ("workflow_complete", "error"):
-                        print(f"\n✓ Workflow ended with: {event_type}")
+                        print(f"\n[OK] Workflow ended with: {event_type}")
                         break
                         
                 except asyncio.TimeoutError:
-                    print(f"\n✗ TIMEOUT: No event received for 120s")
+                    print(f"\n[FAIL] TIMEOUT: No event received for 120s")
                     break
         
         duration = (datetime.now() - start_time).total_seconds()
@@ -133,13 +133,13 @@ async def test_workflow(workflow_id: str, test_name: str, topic: str, max_events
             errors.append(f"Test took too long ({duration:.1f}s), possible infinite loop")
         
         # Summary
-        print(f"\n{'─'*70}")
+        print(f"\n{'-'*70}")
         print(f"Results:")
         print(f"  Events received:    {len(events)}")
         print(f"  Agent messages:     {len(agent_messages)}")
         print(f"  Duration:           {duration:.1f}s")
         print(f"  Event types:        {', '.join(set(event_types))}")
-        print(f"  Status:             {'✓ PASS' if success else '✗ FAIL'}")
+        print(f"  Status:             {'[OK] PASS' if success else '[FAIL] FAIL'}")
         
         if errors:
             print(f"\nErrors:")
@@ -159,7 +159,7 @@ async def test_workflow(workflow_id: str, test_name: str, topic: str, max_events
         
     except Exception as e:
         duration = (datetime.now() - start_time).total_seconds()
-        print(f"\n✗ EXCEPTION: {type(e).__name__}: {e}")
+        print(f"\n[FAIL] EXCEPTION: {type(e).__name__}: {e}")
         return {
             "test": test_name,
             "workflow": workflow_id,
@@ -181,11 +181,12 @@ async def main():
     # Check server connectivity
     print("\nChecking server connectivity...")
     try:
-        health = post_json("/health", {})
-        print(f"✓ Server is healthy")
+        with urllib.request.urlopen(f"http://{BASE}/health") as response:
+            health = json.load(response)
+        print(f"[OK] Server is healthy")
         print(f"  Config valid: {health.get('config_valid')}")
     except Exception as e:
-        print(f"✗ Server is not responding: {e}")
+        print(f"[ERROR] Server is not responding: {e}")
         return
     
     results = []
@@ -217,17 +218,17 @@ async def main():
     total = len(results)
     
     for result in results:
-        status = "✓ PASS" if result["success"] else "✗ FAIL"
+        status = "[OK] PASS" if result["success"] else "[FAIL] FAIL"
         print(f"{status} | {result['test']:40s} | {result['events']:3d} events | {result['duration']:6.1f}s")
     
-    print(f"\n{'─'*70}")
+    print(f"\n{'-'*70}")
     print(f"OVERALL: {passed}/{total} tests passed")
     
     if passed == total:
-        print("✓ All validation tests PASSED!")
+        print("[OK] All validation tests PASSED!")
         return 0
     else:
-        print(f"✗ {total - passed} test(s) FAILED")
+        print(f"[FAIL] {total - passed} test(s) FAILED")
         print("\nFailed tests:")
         for result in results:
             if not result["success"]:
@@ -240,3 +241,5 @@ async def main():
 if __name__ == "__main__":
     exit_code = asyncio.run(main())
     sys.exit(exit_code)
+
+

@@ -56,10 +56,12 @@ def _create_chat_client(config: WorkflowConfig) -> OpenAIChatCompletionClient:
 
 async def create_magentic_manager(config: WorkflowConfig) -> Agent:
     """Create Magentic Manager - coordinates specialists and makes decisions."""
+    chat_client = _create_chat_client(config)
     return Agent(
+        client=chat_client,
         name="magentic_manager",
-        model=config.azure_openai_chat_deployment,
-        client_factory=lambda: _create_chat_client(config),
+        id="magentic_manager",
+        description="Magentic Manager - orchestrates specialists and makes decisions",
         instructions="""You are a Magentic Manager - a highly capable orchestrator and decision-maker.
 
 Your responsibilities:
@@ -81,10 +83,12 @@ Make definitive decisions on approvals/rejections—do not defer to humans for i
 
 async def create_researcher_agent(config: WorkflowConfig) -> Agent:
     """Create Researcher Agent - gathers and synthesizes information."""
+    chat_client = _create_chat_client(config)
     return Agent(
+        client=chat_client,
         name="researcher",
-        model=config.azure_openai_chat_deployment,
-        client_factory=lambda: _create_chat_client(config),
+        id="researcher",
+        description="Researcher Agent - gathers and synthesizes information",
         instructions="""You are a Research Specialist. Your role is to:
 1. Gather comprehensive information on assigned research topics
 2. Identify key trends, data points, and patterns
@@ -97,10 +101,12 @@ When given a research task, deliver detailed yet organized findings.""",
 
 async def create_evaluator_agent(config: WorkflowConfig) -> Agent:
     """Create Evaluator Agent - analyzes and evaluates information."""
+    chat_client = _create_chat_client(config)
     return Agent(
+        client=chat_client,
         name="evaluator",
-        model=config.azure_openai_chat_deployment,
-        client_factory=lambda: _create_chat_client(config),
+        id="evaluator",
+        description="Evaluator Agent - analyzes and evaluates information",
         instructions="""You are an Evaluation and Analysis Specialist. Your role is to:
 1. Receive research findings or work from other specialists
 2. Analyze quality, accuracy, and completeness
@@ -114,10 +120,12 @@ When evaluating content, be thorough but fair in your assessment.""",
 
 async def create_synthesizer_agent(config: WorkflowConfig) -> Agent:
     """Create Synthesizer Agent - creates coherent final output."""
+    chat_client = _create_chat_client(config)
     return Agent(
+        client=chat_client,
         name="synthesizer",
-        model=config.azure_openai_chat_deployment,
-        client_factory=lambda: _create_chat_client(config),
+        id="synthesizer",
+        description="Synthesizer Agent - creates coherent final output",
         instructions="""You are a Synthesis and Communication Specialist. Your role is to:
 1. Take research findings and evaluations
 2. Create a coherent, polished final output
@@ -165,7 +173,7 @@ async def run_magentic_workflow(
         
         # Shared conversation for manager
         manager_conversation: list[Message] = [
-            Message(role="user", content=f"Task: {topic}")
+            Message(role="user", contents=f"Task: {topic}")
         ]
         
         # Specialist outputs storage
@@ -187,9 +195,9 @@ async def run_magentic_workflow(
             source_executor_id="system",
         )
         
-        response = await manager.invoke(manager_conversation)
+        response = await manager.run(manager_conversation)
         plan_text = response.get("content", "Plan created.")
-        manager_conversation.append(Message(role="assistant", content=plan_text))
+        manager_conversation.append(Message(role="assistant", contents=plan_text))
         
         yield WorkflowEvent(
             type="agent_message",
@@ -212,8 +220,8 @@ async def run_magentic_workflow(
                 )
                 
                 researcher_task = f"Research task from manager: {topic}"
-                researcher_conv = [Message(role="user", content=researcher_task)]
-                researcher_response = await researcher.invoke(researcher_conv)
+                researcher_conv = [Message(role="user", contents=researcher_task)]
+                researcher_response = await researcher.run(researcher_conv)
                 research_text = researcher_response.get("content", "Research completed.")
                 specialist_outputs["researcher"] = research_text
                 
@@ -225,12 +233,12 @@ async def run_magentic_workflow(
                 
                 # Manager reviews researcher output
                 manager_conversation.append(
-                    Message(role="user", content=f"Researcher output:\n{research_text}\nReview this and decide to accept or request revisions.")
+                    Message(role="user", contents=f"Researcher output:\n{research_text}\nReview this and decide to accept or request revisions.")
                 )
                 
-                response = await manager.invoke(manager_conversation)
+                response = await manager.run(manager_conversation)
                 review_text = response.get("content", "Output accepted.")
-                manager_conversation.append(Message(role="assistant", content=review_text))
+                manager_conversation.append(Message(role="assistant", contents=review_text))
                 
                 yield WorkflowEvent(
                     type="agent_message",
@@ -249,8 +257,8 @@ async def run_magentic_workflow(
                 )
                 
                 evaluator_task = f"Evaluate this research for accuracy and completeness:\n{specialist_outputs['researcher']}"
-                evaluator_conv = [Message(role="user", content=evaluator_task)]
-                evaluator_response = await evaluator.invoke(evaluator_conv)
+                evaluator_conv = [Message(role="user", contents=evaluator_task)]
+                evaluator_response = await evaluator.run(evaluator_conv)
                 evaluation_text = evaluator_response.get("content", "Evaluation completed.")
                 specialist_outputs["evaluator"] = evaluation_text
                 
@@ -262,12 +270,12 @@ async def run_magentic_workflow(
                 
                 # Manager reviews evaluator output
                 manager_conversation.append(
-                    Message(role="user", content=f"Evaluator analysis:\n{evaluation_text}\nDecide how to proceed.")
+                    Message(role="user", contents=f"Evaluator analysis:\n{evaluation_text}\nDecide how to proceed.")
                 )
                 
-                response = await manager.invoke(manager_conversation)
+                response = await manager.run(manager_conversation)
                 review_text = response.get("content", "Analysis accepted.")
-                manager_conversation.append(Message(role="assistant", content=review_text))
+                manager_conversation.append(Message(role="assistant", contents=review_text))
                 
                 yield WorkflowEvent(
                     type="agent_message",
@@ -292,8 +300,8 @@ async def run_magentic_workflow(
                 ])
                 
                 synthesizer_task = f"Synthesize this into a comprehensive response about: {topic}\n\nMaterials:\n{synthesis_materials}"
-                synthesizer_conv = [Message(role="user", content=synthesizer_task)]
-                synthesizer_response = await synthesizer.invoke(synthesizer_conv)
+                synthesizer_conv = [Message(role="user", contents=synthesizer_task)]
+                synthesizer_response = await synthesizer.run(synthesizer_conv)
                 final_output = synthesizer_response.get("content", "Summary created.")
                 specialist_outputs["synthesizer"] = final_output
                 
@@ -305,12 +313,12 @@ async def run_magentic_workflow(
                 
                 # Manager final review
                 manager_conversation.append(
-                    Message(role="user", content=f"Final output from Synthesizer:\n{final_output}\nProvide your final assessment.")
+                    Message(role="user", contents=f"Final output from Synthesizer:\n{final_output}\nProvide your final assessment.")
                 )
                 
-                response = await manager.invoke(manager_conversation)
+                response = await manager.run(manager_conversation)
                 final_assessment = response.get("content", "Final output is complete.")
-                manager_conversation.append(Message(role="assistant", content=final_assessment))
+                manager_conversation.append(Message(role="assistant", contents=final_assessment))
                 
                 yield WorkflowEvent(
                     type="agent_message",
@@ -340,3 +348,5 @@ async def run_magentic_workflow(
             data={"message": f"Workflow error: {str(e)}"},
             source_executor_id="system",
         )
+
+

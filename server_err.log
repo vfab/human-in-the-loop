@@ -1,0 +1,29 @@
+INFO:     Started server process [18664]
+INFO:     Waiting for application startup.
+Missing Azure OpenAI configuration. Please set AZURE_OPENAI_API_KEY and AZURE_OPENAI_ENDPOINT in .env
+INFO:     Application startup complete.
+INFO:     Uvicorn running on http://127.0.0.1:8000 (Press CTRL+C to quit)
+INFO:     127.0.0.1:56674 - "WebSocket /ws/workflow/handoff/1a08c53a-089d-42d6-902d-a427d176bd99" [accepted]
+INFO:     connection open
+INFO:     127.0.0.1:56682 - "WebSocket /ws/workflow/handoff/b83a766e-676e-4a49-be3b-9112e8100711" [accepted]
+INFO:     connection open
+INFO:     127.0.0.1:56691 - "WebSocket /ws/workflow/handoff/8816f12a-855b-4975-acd8-ebe69015e590" [accepted]
+INFO:     connection open
+INFO:     127.0.0.1:56699 - "WebSocket /ws/workflow/magentic/1ead6494-3fe5-4e2c-9e21-149da6767a12" [accepted]
+INFO:     connection open
+INFO:     127.0.0.1:63564 - "WebSocket /ws/workflow/magentic/f780fb97-604c-427d-9849-b845e07219fd" [accepted]
+INFO:     connection open
+INFO:     127.0.0.1:59392 - "WebSocket /ws/workflow/magentic/25a206d1-b124-4135-bbc3-c5ca888fe4a0" [accepted]
+INFO:     connection open
+INFO:     127.0.0.1:53465 - "WebSocket /ws/workflow/handoff/463053be-e9d3-44b9-8bd1-7665ba1651f8" [accepted]
+INFO:     connection open
+INFO:     127.0.0.1:53472 - "WebSocket /ws/workflow/handoff/db837f56-c9ac-454f-8a2e-0e0fb9b15a94" [accepted]
+INFO:     connection open
+INFO:     127.0.0.1:62727 - "WebSocket /ws/workflow/handoff/a81ff9f3-c71d-428e-ad5a-45a8c359b2f4" [accepted]
+INFO:     connection open
+INFO:     127.0.0.1:62733 - "WebSocket /ws/workflow/magentic/b309b69d-2506-4315-8733-5d7e0d21439a" [accepted]
+INFO:     connection open
+INFO:     127.0.0.1:59976 - "WebSocket /ws/workflow/magentic/f8cc93b6-f1c7-4915-8387-638ac58ae2a0" [accepted]
+INFO:     connection open
+INFO:     127.0.0.1:54038 - "WebSocket /ws/workflow/magentic/a29594aa-0c85-4001-add1-dabca31cbcca" [accepted]
+INFO:     connection open

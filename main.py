@@ -56,8 +56,8 @@ from workflows.group_chat_workflow import run_group_chat_workflow
 from workflows.sequential_workflow import run_sequential_workflow
 from workflows.approval_workflow import run_approval_workflow
 from workflows.game_workflow import run_game_workflow
-from workflows.handoff_workflow import run_handoff_workflow
-from workflows.magentic_workflow import run_magentic_workflow
+from workflows.handoff_workflow_simple import run_handoff_workflow
+from workflows.magentic_workflow_simple import run_magentic_workflow
 
 load_dotenv()
 logger = logging.getLogger(__name__)
@@ -88,15 +88,8 @@ class WorkflowEventMessage(BaseModel):
 
 
 # ============================================================================
-# FastAPI App Setup
+# Global State
 # ============================================================================
-
-app = FastAPI(
-    title="HITL Demo Dashboard",
-    description="Human-In-The-Loop demonstration workflows",
-    version="1.0.0",
-    lifespan=lifespan
-)
 
 # Configuration loaded once at startup
 _config: WorkflowConfig | None = None
@@ -104,6 +97,38 @@ _workflow_runners: dict[str, Any] = {}  # Placeholder for workflow runner functi
 _active_runs: dict[str, dict[str, Any]] = {}  # Track running workflows
 _TOPIC_REQUIRED = {"concurrent", "group_chat", "sequential", "handoff", "magentic"}  # Workflows that need a user topic
 _STALE_RUN_MAX_AGE_DAYS = int(os.getenv("STALE_RUN_MAX_AGE_DAYS", "7"))  # Cleanup runs older than N days
+
+
+def _cleanup_stale_runs() -> None:
+    """Remove runs older than _STALE_RUN_MAX_AGE_DAYS from memory.
+    
+    This prevents memory leaks from long-running server instances.
+    Runs are stored in memory, so old runs should be pruned periodically.
+    """
+    cutoff_time = datetime.utcnow() - timedelta(days=_STALE_RUN_MAX_AGE_DAYS)
+    stale_run_ids = []
+    
+    for run_id, run_info in _active_runs.items():
+        started_at_str = run_info.get("started_at", "")
+        if not started_at_str:
+            continue
+        
+        try:
+            started_at = datetime.fromisoformat(started_at_str)
+            if started_at < cutoff_time:
+                stale_run_ids.append(run_id)
+        except (ValueError, TypeError):
+            # Malformed timestamp, skip
+            continue
+    
+    for run_id in stale_run_ids:
+        del _active_runs[run_id]
+    
+    if stale_run_ids:
+        logger.info("Cleaned up %d stale runs (older than %d days)", 
+                   len(stale_run_ids), _STALE_RUN_MAX_AGE_DAYS)
+    else:
+        logger.debug("No stale runs to clean up")
 
 
 @asynccontextmanager
@@ -149,36 +174,16 @@ async def lifespan(app: FastAPI):
     # For now, nothing additional needed
 
 
-def _cleanup_stale_runs() -> None:
-    """Remove runs older than _STALE_RUN_MAX_AGE_DAYS from memory.
-    
-    This prevents memory leaks from long-running server instances.
-    Runs are stored in memory, so old runs should be pruned periodically.
-    """
-    cutoff_time = datetime.utcnow() - timedelta(days=_STALE_RUN_MAX_AGE_DAYS)
-    stale_run_ids = []
-    
-    for run_id, run_info in _active_runs.items():
-        started_at_str = run_info.get("started_at", "")
-        if not started_at_str:
-            continue
-        
-        try:
-            started_at = datetime.fromisoformat(started_at_str)
-            if started_at < cutoff_time:
-                stale_run_ids.append(run_id)
-        except (ValueError, TypeError):
-            # Malformed timestamp, skip
-            continue
-    
-    for run_id in stale_run_ids:
-        del _active_runs[run_id]
-    
-    if stale_run_ids:
-        logger.info("Cleaned up %d stale runs (older than %d days)", 
-                   len(stale_run_ids), _STALE_RUN_MAX_AGE_DAYS)
-    else:
-        logger.debug("No stale runs to clean up")
+# ============================================================================
+# FastAPI App Setup
+# ============================================================================
+
+app = FastAPI(
+    title="HITL Demo Dashboard",
+    description="Human-In-The-Loop demonstration workflows",
+    version="1.0.0",
+    lifespan=lifespan
+)
 
 
 
@@ -490,6 +495,14 @@ async def websocket_workflow_stream(websocket: WebSocket, workflow_id: str, run_
                 # Takes topic parameter
                 topic = user_input or "Write a brief introduction to artificial intelligence."
                 workflow_stream = workflow_runner(_config, topic)
+            elif workflow_id == "handoff":
+                # Agent Framework Handoff pattern: takes user query/issue
+                query = user_input or "I need technical support with my API integration."
+                workflow_stream = workflow_runner(_config, query)
+            elif workflow_id == "magentic":
+                # Agent Framework Magentic pattern: takes task/analysis request
+                task = user_input or "Analyze market trends in cloud infrastructure."
+                workflow_stream = workflow_runner(_config, task)
             else:
                 await websocket.send_json({
                     "type": "error",

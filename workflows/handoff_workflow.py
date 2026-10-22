@@ -56,10 +56,12 @@ def should_escalate_further(message: str) -> bool:
 
 async def create_customer_service_agent(config: WorkflowConfig) -> Agent:
     """Create Customer Service Agent - first responder."""
+    chat_client = _create_chat_client(config)
     return Agent(
+        client=chat_client,
         name="customer_service_agent",
-        model=config.azure_openai_chat_deployment,
-        client_factory=lambda: _create_chat_client(config),
+        id="customer_service_agent",
+        description="Customer Service Agent - handles initial support requests",
         instructions="""You are a friendly Customer Service Agent. Your role is to:
 1. Listen to customer issues with empathy
 2. Attempt to resolve simple issues (password reset, billing questions, account info)
@@ -76,10 +78,12 @@ Be conversational, helpful, and professional.""",
 
 async def create_technical_expert_agent(config: WorkflowConfig) -> Agent:
     """Create Technical Expert Agent - handles technical issues."""
+    chat_client = _create_chat_client(config)
     return Agent(
+        client=chat_client,
         name="technical_expert_agent",
-        model=config.azure_openai_chat_deployment,
-        client_factory=lambda: _create_chat_client(config),
+        id="technical_expert_agent",
+        description="Technical Expert Agent - handles technical issues",
         instructions="""You are a Technical Expert. Your role is to:
 1. Analyze technical issues in depth
 2. Provide troubleshooting steps and solutions
@@ -98,10 +102,12 @@ Be technical but clear, provide step-by-step guidance.""",
 
 async def create_product_manager_agent(config: WorkflowConfig) -> Agent:
     """Create Product Manager Agent - final authority."""
+    chat_client = _create_chat_client(config)
     return Agent(
+        client=chat_client,
         name="product_manager_agent",
-        model=config.azure_openai_chat_deployment,
-        client_factory=lambda: _create_chat_client(config),
+        id="product_manager_agent",
+        description="Product Manager Agent - final decision authority",
         instructions="""You are a Product Manager - the final decision authority. Your role is to:
 1. Review issues that require policy or executive decisions
 2. Make judgments on product changes, workarounds, or exceptions
@@ -170,7 +176,7 @@ async def run_handoff_workflow(
         conversation: list[Message] = []
         
         # Initial message from user
-        conversation.append(Message(role="user", content=topic))
+        conversation.append(Message(role="user", contents=topic))
         yield WorkflowEvent(
             type="agent_message",
             data={"message": f"Customer: {topic}"},
@@ -185,9 +191,9 @@ async def run_handoff_workflow(
             source_executor_id="system",
         )
         
-        response = await customer_service.invoke(conversation)
+        response = await customer_service.run(conversation)
         response_text = response.get("content", "I'll help you with that.")
-        conversation.append(Message(role="assistant", content=response_text))
+        conversation.append(Message(role="assistant", contents=response_text))
         
         yield WorkflowEvent(
             type="agent_message",
@@ -206,9 +212,9 @@ async def run_handoff_workflow(
             
             # Phase 2: Technical Expert takes over
             logger.info("Phase 2: Technical Expert")
-            response = await technical_expert.invoke(conversation)
+            response = await technical_expert.run(conversation)
             response_text = response.get("content", "I'll diagnose this technical issue.")
-            conversation.append(Message(role="assistant", content=response_text))
+            conversation.append(Message(role="assistant", contents=response_text))
             
             yield WorkflowEvent(
                 type="agent_message",
@@ -227,9 +233,9 @@ async def run_handoff_workflow(
                 
                 # Phase 3: Product Manager makes final decision
                 logger.info("Phase 3: Product Manager")
-                response = await product_manager.invoke(conversation)
+                response = await product_manager.run(conversation)
                 response_text = response.get("content", "I'll make a management decision on this.")
-                conversation.append(Message(role="assistant", content=response_text))
+                conversation.append(Message(role="assistant", contents=response_text))
                 
                 yield WorkflowEvent(
                     type="agent_message",
@@ -248,9 +254,9 @@ async def run_handoff_workflow(
             
             # Phase 2b: Product Manager (direct from customer service)
             logger.info("Phase 2b: Product Manager (direct)")
-            response = await product_manager.invoke(conversation)
+            response = await product_manager.run(conversation)
             response_text = response.get("content", "I'll handle this policy matter.")
-            conversation.append(Message(role="assistant", content=response_text))
+            conversation.append(Message(role="assistant", contents=response_text))
             
             yield WorkflowEvent(
                 type="agent_message",
@@ -279,3 +285,5 @@ async def run_handoff_workflow(
             data={"message": f"Workflow error: {str(e)}"},
             source_executor_id="system",
         )
+
+
