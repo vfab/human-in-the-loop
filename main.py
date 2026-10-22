@@ -55,6 +55,8 @@ from workflows.group_chat_workflow import run_group_chat_workflow
 from workflows.sequential_workflow import run_sequential_workflow
 from workflows.approval_workflow import run_approval_workflow
 from workflows.game_workflow import run_game_workflow
+from workflows.handoff_workflow import run_handoff_workflow
+from workflows.magentic_workflow import run_magentic_workflow
 
 load_dotenv()
 logger = logging.getLogger(__name__)
@@ -98,7 +100,7 @@ app = FastAPI(
 _config: WorkflowConfig | None = None
 _workflow_runners: dict[str, Any] = {}  # Placeholder for workflow runner functions
 _active_runs: dict[str, dict[str, Any]] = {}  # Track running workflows
-_TOPIC_REQUIRED = {"concurrent", "group_chat", "sequential"}  # Workflows that need a user topic
+_TOPIC_REQUIRED = {"concurrent", "group_chat", "sequential", "handoff", "magentic"}  # Workflows that need a user topic
 
 
 @app.on_event("startup")
@@ -120,6 +122,8 @@ async def startup():
     _workflow_runners["sequential"] = run_sequential_workflow
     _workflow_runners["approval"] = run_approval_workflow
     _workflow_runners["game"] = run_game_workflow
+    _workflow_runners["handoff"] = run_handoff_workflow
+    _workflow_runners["magentic"] = run_magentic_workflow
     
     logger.info("HITL Dashboard starting on http://localhost:8000")
     logger.info("Available workflows: %s", list(_workflow_runners.keys()))
@@ -172,6 +176,20 @@ async def list_workflows() -> list[WorkflowMetadata]:
             description="Sequential workflow with human steering",
             input_required=True,
             input_placeholder="Enter content to review..."
+        ),
+        WorkflowMetadata(
+            id="handoff",
+            name="Handoff Orchestration",
+            description="Agent Framework pattern: Customer support with automatic handoff between agents",
+            input_required=True,
+            input_placeholder="Describe your support issue..."
+        ),
+        WorkflowMetadata(
+            id="magentic",
+            name="Magentic Orchestration",
+            description="Agent Framework pattern: Manager-coordinated multi-agent analysis",
+            input_required=True,
+            input_placeholder="Enter task for analysis..."
         ),
         WorkflowMetadata(
             id="approval",
