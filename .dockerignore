@@ -10,5 +10,8 @@ infra/.terraform
 infra/.terraform.lock.hcl
 infra/*.tfstate
 infra/*.tfstate.*
+infra/tfplan
+infra/backend.hcl
 .env
 .vscode
+.copilot-tracking
