@@ -11,3 +11,6 @@ infra/terraform.tfvars
 infra/tfplan
 infra/backend.hcl
 __pycache__/
+pytest_results.txt
+file_list.txt
+server.log
