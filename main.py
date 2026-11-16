@@ -23,7 +23,7 @@ Endpoints:
 - POST /api/workflows/{id}/input    - Handle text input response
 
 Environment Variables (from .env):
-- AZURE_OPENAI_API_KEY
+- AZURE_OPENAI_API_KEY (optional; otherwise uses AzureCliCredential)
 - AZURE_OPENAI_ENDPOINT
 - AZURE_OPENAI_CHAT_DEPLOYMENT_NAME (or AZURE_OPENAI_CHAT_MODEL)
 - AZURE_OPENAI_API_VERSION (default: 2024-10-21)
@@ -145,10 +145,12 @@ async def lifespan(app: FastAPI):
     _config = WorkflowConfig.from_env()
     
     # Validate Azure OpenAI config
-    if not _config.azure_openai_api_key or not _config.azure_openai_endpoint:
+    config_error = _config.validate()
+    if config_error:
         logger.warning(
-            "Missing Azure OpenAI configuration. "
-            "Please set AZURE_OPENAI_API_KEY and AZURE_OPENAI_ENDPOINT in .env"
+            "Missing Azure OpenAI configuration. %s. "
+            "Please set the required values in .env",
+            config_error,
         )
     
     # Register workflow runners

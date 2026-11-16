@@ -10,6 +10,9 @@
   },
   "python.testing.pytestEnabled": false,
   "python.testing.unittestEnabled": false,
+  "workbench.externalUriOpeners": {
+    "http://localhost:8000": "simpleBrowser.open"
+  },
   "debug.showDebugOutput": true,
   "debugpy.showLog": false,
   "git.ignoreLimitWarning": true,

@@ -1,25 +1,57 @@
+---
+description: Local configuration, debugging, and troubleshooting for the HITL dashboard
+---
+
 # Local Development Guide - HITL Dashboard
 
-## Quick Start (F5)
+## Quick Start (Ctrl+F5)
 
-**The easiest way to run the app:**
+**Run the HITL Dashboard from VS Code:**
 
-1. Open the project in VS Code
-2. Press **F5** (or Debug → Start Debugging)
-3. The HITL Dashboard will start on http://localhost:8000
-4. Open your browser to http://localhost:8000
+1. Open the `C:\src\human_in_loop` project folder in VS Code.
+2. If `.venv` does not exist yet, create it in the VS Code terminal:
 
-That's it! The FastAPI server will start with auto-reload enabled, so any changes you make to the code will automatically restart the server.
+   ```powershell
+   python -m venv .venv
+   ```
+
+3. Select the project's `.venv` Python interpreter if VS Code prompts you.
+   You can also open the Command Palette, run **Python: Select Interpreter**,
+   and choose `.venv\Scripts\python.exe`.
+4. If this is your first run, install the dependencies in the VS Code terminal:
+
+   ```powershell
+   .\.venv\Scripts\python.exe -m pip install -r requirements.txt
+   ```
+
+5. Configure Azure OpenAI settings in a root-level `.env` file. See
+   [Environment Variables (.env)](#environment-variables-env) below. For
+   Azure CLI authentication, run `az login`.
+6. Select **HITL Dashboard** from **Run and Debug**, then press **Ctrl+F5**
+   to run without debugging, or **F5** to attach the Python debugger.
+7. VS Code opens the dashboard in its integrated browser when Uvicorn is ready.
+8. Press **Shift+F5** to stop the server. Closing the browser alone does not stop it.
+
+The server runs in VS Code's integrated terminal with auto-reload enabled.
+It is independent of Copilot Chat and does not create a Copilot background
+command. With F5, the Python debugger is attached so you can set breakpoints.
+The Microsoft Python and Python Debugger extensions are required.
 
 ---
 
 ## What F5 Does
 
-When you press F5, VS Code executes the "HITL Dashboard (FastAPI)" debug configuration:
+The `HITL Dashboard` configuration in `.vscode/launch.json` runs:
 
-```bash
+```powershell
 uvicorn main:app --reload --host 127.0.0.1 --port 8000
 ```
+
+The launch configuration explicitly uses `.venv\Scripts\python.exe` and the
+workspace root as its working directory. It detects Uvicorn's ready message
+and opens `http://127.0.0.1:8000/` using `openIntegratedBrowser`, without an
+external browser or URL-opener setting. If startup fails, inspect the terminal;
+the browser will not open until the server reports it is listening.
 
 This:
 - ✅ Runs the FastAPI application from `main.py`
@@ -104,10 +136,12 @@ if workflow_id == "approval" or workflow_id == "game":
 Create a `.env` file in the project root with Azure OpenAI credentials:
 
 ```env
-AZURE_OPENAI_API_KEY=your-key-here
 AZURE_OPENAI_ENDPOINT=https://your-resource.openai.azure.com/
 AZURE_OPENAI_CHAT_DEPLOYMENT_NAME=gpt-4
 AZURE_OPENAI_API_VERSION=2024-10-21
+
+# Optional: omit to use AzureCliCredential after az login
+# AZURE_OPENAI_API_KEY=your-key-here
 
 # Optional for email workflows
 SMTP_HOST=smtp.gmail.com
@@ -117,7 +151,16 @@ SMTP_PASSWORD=your-app-password
 EMAIL_RECIPIENT=recipient@example.com
 ```
 
-**Note:** The server will start even without these, but workflows will fail. The dashboard still loads and shows the UI.
+The endpoint and deployment name are required. You can use
+`AZURE_OPENAI_CHAT_MODEL` instead of `AZURE_OPENAI_CHAT_DEPLOYMENT_NAME`.
+For local authentication without an API key, run `az login` with an account
+that has the Cognitive Services OpenAI User role on your Azure OpenAI resource.
+Alternatively, set `AZURE_OPENAI_API_KEY` to use API-key authentication.
+
+**Note:** The server still starts when required configuration is missing, but
+logs a warning naming the missing setting and workflows will fail. The dashboard
+still loads and shows the UI. Startup validation does not verify authentication
+or connectivity to Azure.
 
 ### Logging
 
@@ -168,9 +211,11 @@ pip install -r requirements.txt
 - Agent framework version mismatch
 
 **Solution:**
-1. Check `AZURE_OPENAI_API_KEY` and `AZURE_OPENAI_ENDPOINT` in `.env`
-2. Check integrated terminal for error messages
-3. Set breakpoint in workflow file to debug
+1. Check `AZURE_OPENAI_ENDPOINT` and the deployment name in `.env`
+2. If using an API key, check `AZURE_OPENAI_API_KEY`; otherwise, run `az login`
+   and verify your account has access to the Azure OpenAI resource
+3. Check integrated terminal for error messages
+4. Set breakpoint in workflow file to debug
 
 ---
 
@@ -186,8 +231,10 @@ Press Ctrl+F5 (or Run → Run Without Debugging) - slightly faster, no debugger
 
 ### Option 3: Manual Command Line
 
-```bash
-python -m uvicorn main:app --reload --host 127.0.0.1 --port 8000
+Run this in the VS Code PowerShell terminal:
+
+```powershell
+.\.venv\Scripts\python.exe -m uvicorn main:app --reload --host 127.0.0.1 --port 8000
 ```
 
 ### Option 4: Docker (Production-like)

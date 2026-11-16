@@ -1,4 +1,7 @@
-# Human-in-the-Loop Demo Applications
+---
+title: Human-in-the-Loop Demo Applications
+description: Set up and run the human-in-the-loop workflow dashboard and Python examples
+---
 
 A collection of Python agent framework examples demonstrating human-in-the-loop workflows for concurrent and sequential agent coordination.
 
@@ -29,12 +32,37 @@ A collection of Python agent framework examples demonstrating human-in-the-loop 
    python -m py_compile *.py
    ```
 
-4. **Run the app server:**
+4. **Run the dashboard:**
    ```powershell
-   uvicorn app_server:app --port 8000
+   .\.venv\Scripts\python.exe -m uvicorn main:app --host 127.0.0.1 --port 8000
    ```
 
-   The API will be available at `http://localhost:8000/`
+   The dashboard will be available at <http://127.0.0.1:8000/>.
+
+#### Start and stop inside VS Code
+
+After setup, configure the root-level `.env` file as described in the
+[local development guide](LOCAL_DEVELOPMENT.md#environment-variables-env).
+Install the Microsoft Python and Python Debugger extensions in VS Code.
+
+1. Select **HITL Dashboard** in the **Run and Debug** configuration dropdown.
+2. Press **Ctrl+F5** (**Run: Start Without Debugging**). VS Code starts the
+   dashboard with the project's virtual environment and opens its integrated
+   browser after Uvicorn reports that it is listening.
+3. Keep using Copilot Chat while the server runs in VS Code's integrated terminal.
+4. Press **Shift+F5** (**Run: Stop Debugging**) to stop the server. Closing the
+   browser tab alone does not stop it.
+
+Use **F5** instead when you want breakpoints and debugging. Startup failures
+appear in the terminal; the browser opens only after successful startup.
+Workflow execution requires valid Azure OpenAI configuration and authentication.
+
+> [!NOTE]
+> The server is managed by VS Code, not a Copilot background shell command.
+> This avoids Copilot's "background command running" indicator and lets chat
+> finish normally while the dashboard remains available. When asking Copilot
+> to launch the app, request the **HITL Dashboard** VS Code launch configuration,
+> not a background shell command.
 
 ### Azure Deployment
 

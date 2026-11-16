@@ -6,6 +6,8 @@
             "type": "debugpy",
             "request": "launch",
             "module": "uvicorn",
+            "python": "${workspaceFolder}\\.venv\\Scripts\\python.exe",
+            "cwd": "${workspaceFolder}",
             "args": [
                 "main:app",
                 "--reload",
@@ -19,6 +21,11 @@
             "console": "integratedTerminal",
             "env": {
                 "PYTHONPATH": "${workspaceFolder}"
+            },
+            "serverReadyAction": {
+                "pattern": "Uvicorn running on https?://127\\.0\\.0\\.1:([0-9]+)",
+                "uriFormat": "http://127.0.0.1:%s/",
+                "action": "openIntegratedBrowser"
             }
         }
     ]
