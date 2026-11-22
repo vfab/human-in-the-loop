@@ -1,194 +1,37 @@
 ---
 title: Human-in-the-Loop Demo Applications
-description: Set up and run the human-in-the-loop workflow dashboard and Python examples
+description: Overview and documentation index for the human-in-the-loop workflow dashboard and Python examples
 ---
 
-A collection of Python agent framework examples demonstrating human-in-the-loop workflows for concurrent and sequential agent coordination.
+This repository contains Python agent-framework examples and a FastAPI dashboard
+for human-in-the-loop workflows.
 
-## Setup
+## Documentation
 
-### Prerequisites
+* [Local development guide](LOCAL_DEVELOPMENT.md): Windows setup, local
+  configuration, launch, testing, and troubleshooting
+* [Container authentication guide](CONTAINER_AUTH.md): container configuration,
+  Azure OpenAI credentials, and deployment authentication limitations
 
-- Python 3.10+
-- Azure CLI (`az login` configured)
-- Docker Desktop (for container deployment)
-- Terraform 1.6+
+The guides are the sources of truth for setup and authentication details. This
+README intentionally keeps only an overview to avoid duplicating instructions.
 
-### Local Development (Windows)
+## Project Overview
 
-1. **Create and activate virtual environment:**
-   ```powershell
-   python -m venv .venv
-   .\.venv\Scripts\Activate.ps1
-   ```
+The dashboard serves a browser interface and streams workflow events over
+WebSockets. The application code is in `main.py` and `workflows/`; frontend
+assets are in `static/`, tests are in `tests/`, and Terraform deployment
+configuration is in `infra/`.
 
-2. **Install dependencies:**
-   ```powershell
-   pip install -r requirements.txt
-   ```
+The registered workflows are concurrent analysis, group chat, sequential
+review, approval, guessing game, handoff, and Magentic orchestration. Workflow
+execution requires valid Azure OpenAI configuration and authentication.
 
-3. **Verify installation:**
-   ```powershell
-   python -m py_compile *.py
-   ```
+## Requirements
 
-4. **Run the dashboard:**
-   ```powershell
-   .\.venv\Scripts\python.exe -m uvicorn main:app --host 127.0.0.1 --port 8000
-   ```
-
-   The dashboard will be available at <http://127.0.0.1:8000/>.
-
-#### Start and stop inside VS Code
-
-After setup, configure the root-level `.env` file as described in the
-[local development guide](LOCAL_DEVELOPMENT.md#environment-variables-env).
-Install the Microsoft Python and Python Debugger extensions in VS Code.
-
-1. Select **HITL Dashboard** in the **Run and Debug** configuration dropdown.
-2. Press **Ctrl+F5** (**Run: Start Without Debugging**). VS Code starts the
-   dashboard with the project's virtual environment and opens its integrated
-   browser after Uvicorn reports that it is listening.
-3. Keep using Copilot Chat while the server runs in VS Code's integrated terminal.
-4. Press **Shift+F5** (**Run: Stop Debugging**) to stop the server. Closing the
-   browser tab alone does not stop it.
-
-Use **F5** instead when you want breakpoints and debugging. Startup failures
-appear in the terminal; the browser opens only after successful startup.
-Workflow execution requires valid Azure OpenAI configuration and authentication.
-
-> [!NOTE]
-> The server is managed by VS Code, not a Copilot background shell command.
-> This avoids Copilot's "background command running" indicator and lets chat
-> finish normally while the dashboard remains available. When asking Copilot
-> to launch the app, request the **HITL Dashboard** VS Code launch configuration,
-> not a background shell command.
-
-### Azure Deployment
-
-#### Prerequisites
-
-- Azure subscription with `ba1e5722-3386-4ff8-be48-64c548b8756f` ID
-- Access to shared resources in `rg-vfab`
-- Docker credentials configured for `acrba1e5722.azurecr.io`
-
-#### Terraform Setup
-
-1. **Initialize Terraform backend:**
-   ```powershell
-   cd infra
-   cp backend.hcl.example backend.hcl
-   # Edit backend.hcl if needed (defaults are pre-configured)
-   terraform init -backend-config=backend.hcl
-   ```
-
-2. **Validate configuration:**
-   ```powershell
-   terraform fmt -check
-   terraform validate
-   ```
-
-3. **Build and push container image:**
-   ```powershell
-   az acr login -n acrba1e5722
-   $IMAGE_TAG="acrba1e5722.azurecr.io/hitl-email-assistant:$(git rev-parse --short HEAD)"
-   docker build -t $IMAGE_TAG .
-   docker push $IMAGE_TAG
-   ```
-
-4. **Plan deployment:**
-   ```powershell
-   # Set required variables
-   $env:TF_VAR_subscription_id = "ba1e5722-3386-4ff8-be48-64c548b8756f"
-   $env:TF_VAR_container_image = "$IMAGE_TAG"
-   $env:TF_VAR_azure_openai_endpoint = "https://<your-openai>.openai.azure.com/"
-   $env:TF_VAR_azure_openai_chat_model = "gpt-4o"
-   $env:TF_VAR_azure_openai_api_key = "<your-api-key>"
-   
-   terraform plan -out=tfplan
-   ```
-
-5. **Apply deployment:**
-   ```powershell
-   terraform apply tfplan
-   ```
-
-   Outputs will include the Container App URL.
-
-## Architecture
-
-The deployment uses:
-
-- **Shared Foundation (rg_vfab_terraform):**
-  - Azure Container Registry (`acrba1e5722`)
-  - Container Apps Environment (`vfab-cae`) in eastus2
-  - Log Analytics Workspace (`vfab-log-analytics`)
-  - Resource Group (`rg-vfab`) in eastus
-
-- **This Repository:**
-  - Container App (`hitl-email-assistant`) running the FastAPI server
-  - Email Communication Service (`vfab-hitl-email`) for sending emails
-  - Terraform state in blob storage (`human-in-the-loop-tfstate`)
-
-## State Management
-
-Terraform state is stored in Azure Blob Storage:
-- **Account:** `tfstateba1e5722`
-- **Container:** `human-in-the-loop-tfstate`
-- **Authentication:** Azure AD (configure via `az login`)
-
-## Environment Variables
-
-### Runtime
-
-- `AZURE_OPENAI_ENDPOINT`: Azure OpenAI service endpoint URL
-- `AZURE_OPENAI_CHAT_MODEL`: Model deployment name (e.g., `gpt-4o`)
-- `AZURE_OPENAI_API_VERSION`: OpenAI API version (default: `2024-12-01-preview`)
-- `AZURE_OPENAI_API_KEY`: OpenAI API key (provided via secrets)
-
-### Terraform
-
-All terraform variables can be set via environment variables with `TF_VAR_` prefix:
-- `TF_VAR_subscription_id`
-- `TF_VAR_container_image`
-- `TF_VAR_azure_openai_endpoint`
-- `TF_VAR_azure_openai_chat_model`
-- `TF_VAR_azure_openai_api_key` (sensitive)
-
-## Troubleshooting
-
-### Terraform Backend Connection Issues
-
-If you see auth errors during `terraform init`:
-
-```powershell
-# Ensure Azure CLI is authenticated
-az login
-
-# Check subscription
-az account show
-
-# Verify storage account access
-az storage account show -n tfstateba1e5722 -g rg-vfab
-```
-
-### Container Build Failures
-
-```powershell
-# Clear Docker cache if needed
-docker builder prune
-
-# Rebuild with no cache
-docker build --no-cache -t $IMAGE_TAG .
-```
-
-### Container App Deployment Issues
-
-```powershell
-# Verify logs
-$APP_NAME = "hitl-email-assistant"
-az containerapp logs show -n $APP_NAME -g rg-vfab
-```
+* Python 3.10 or later
+* Azure CLI for local Azure CLI authentication
+* Docker Desktop and Terraform 1.6 or later for container deployment
 
 ## License
 

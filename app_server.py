@@ -1,7 +1,10 @@
 from dataclasses import dataclass
+import logging
 
 from fastapi import FastAPI, HTTPException
 from agent_framework_openai import OpenAIChatClient
+
+logger = logging.getLogger(__name__)
 
 app = FastAPI(title="Human-in-the-Loop Email Assistant", version="1.0.0")
 
@@ -35,11 +38,8 @@ class EmailAssistant:
                 + message
             )
 
-        try:
-            result = await self.agent.run(message)
-            return result.text
-        except Exception as exc:
-            return f"Error processing email: {exc}"
+        result = await self.agent.run(message)
+        return result.text
 
 assistant = EmailAssistant(OpenAIChatClient())
 
@@ -64,8 +64,16 @@ async def run_workflow() -> dict[str, str]:
         ),
     )
 
-    result = await assistant.process_email(incoming_email)
-    if result.startswith("Error processing email:"):
-        raise HTTPException(status_code=500, detail=result)
+    try:
+        result = await assistant.process_email(incoming_email)
+    except Exception as exc:
+        logger.error(
+            "Email processing failed (exception_type=%s)",
+            type(exc).__name__,
+        )
+        raise HTTPException(
+            status_code=500,
+            detail="Email processing failed.",
+        ) from exc
 
     return {"response": result}

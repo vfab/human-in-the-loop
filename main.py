@@ -41,12 +41,13 @@ import uuid
 from contextlib import asynccontextmanager
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Any, AsyncIterator
+from typing import Any, AsyncIterator, Literal
 
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException
+from fastapi import FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect
+from fastapi.exceptions import RequestValidationError
+from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict, Field, StrictBool, StrictStr
 from dotenv import load_dotenv
 
 # Import workflow modules (Phase 1 extraction)
@@ -87,6 +88,28 @@ class WorkflowEventMessage(BaseModel):
     data: dict[str, Any] = {}  # Extra context
 
 
+class APIRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+
+class StartWorkflowRequest(APIRequest):
+    input: StrictStr = Field(default="", max_length=10_000)
+
+
+class ApprovalRequest(APIRequest):
+    run_id: StrictStr = Field(min_length=1, max_length=64)
+    request_id: StrictStr = Field(min_length=1, max_length=128)
+    approved: StrictBool = False
+    feedback: StrictStr = Field(default="", max_length=4_000)
+    decisions: dict[StrictStr, StrictBool] = Field(default_factory=dict, max_length=100)
+
+
+class InputRequest(APIRequest):
+    run_id: StrictStr = Field(min_length=1, max_length=64)
+    request_id: StrictStr = Field(min_length=1, max_length=128)
+    input: StrictStr = Field(default="", max_length=10_000)
+
+
 # ============================================================================
 # Global State
 # ============================================================================
@@ -97,6 +120,10 @@ _workflow_runners: dict[str, Any] = {}  # Placeholder for workflow runner functi
 _active_runs: dict[str, dict[str, Any]] = {}  # Track running workflows
 _TOPIC_REQUIRED = {"concurrent", "group_chat", "sequential", "handoff", "magentic"}  # Workflows that need a user topic
 _STALE_RUN_MAX_AGE_DAYS = int(os.getenv("STALE_RUN_MAX_AGE_DAYS", "7"))  # Cleanup runs older than N days
+_SAFE_WORKFLOW_ERRORS = {
+    "Missing AZURE_OPENAI_ENDPOINT",
+    "Missing AZURE_OPENAI_CHAT_DEPLOYMENT_NAME or AZURE_OPENAI_CHAT_MODEL",
+}
 
 
 def _cleanup_stale_runs() -> None:
@@ -188,6 +215,15 @@ app = FastAPI(
 )
 
 
+@app.exception_handler(RequestValidationError)
+async def request_validation_exception_handler(
+    request: Request,
+    exc: RequestValidationError,
+) -> JSONResponse:
+    """Keep submitted values out of validation error responses."""
+    return JSONResponse(status_code=422, content={"detail": "Invalid request."})
+
+
 
 # ============================================================================
 # Static Files & UI Routes
@@ -263,7 +299,10 @@ async def list_workflows() -> list[WorkflowMetadata]:
 
 
 @app.post("/api/workflows/{workflow_id}/start")
-async def start_workflow(workflow_id: str, body: dict[str, Any]) -> dict[str, Any]:
+async def start_workflow(
+    workflow_id: str,
+    body: StartWorkflowRequest,
+) -> dict[str, Any]:
     """Start a workflow execution.
     
     Args:
@@ -277,7 +316,7 @@ async def start_workflow(workflow_id: str, body: dict[str, Any]) -> dict[str, An
         raise HTTPException(status_code=404, detail=f"Workflow '{workflow_id}' not found")
     
     run_id = str(uuid.uuid4())
-    input_text = body.get("input", "")
+    input_text = body.input
     
     if workflow_id in _TOPIC_REQUIRED and not str(input_text).strip():
         raise HTTPException(status_code=400, detail="A topic is required for this workflow")
@@ -287,7 +326,7 @@ async def start_workflow(workflow_id: str, body: dict[str, Any]) -> dict[str, An
         "input": input_text,
         "started_at": datetime.utcnow().isoformat(),
         "status": "running",
-        "pending_responses": {},  # Responses that arrived with no waiter registered
+        "pending_requests": {},  # Requests currently awaiting a human response
         "waiters": {},  # request_id -> Future resolved by the approve/input endpoints
     }
     
@@ -296,7 +335,10 @@ async def start_workflow(workflow_id: str, body: dict[str, Any]) -> dict[str, An
 
 
 @app.post("/api/workflows/{workflow_id}/approve")
-async def submit_approval(workflow_id: str, body: dict[str, Any]) -> dict[str, Any]:
+async def submit_approval(
+    workflow_id: str,
+    body: ApprovalRequest,
+) -> dict[str, Any]:
     """Submit approval response for a pending approval request.
     
     Args:
@@ -311,28 +353,52 @@ async def submit_approval(workflow_id: str, body: dict[str, Any]) -> dict[str, A
     Returns:
         {"status": "accepted"}
     """
-    run_id = body.get("run_id")
-    request_id = body.get("request_id")
-    approved = body.get("approved", False)
-    feedback = body.get("feedback", "")
-    decisions = body.get("decisions") or {}
-    
-    if run_id not in _active_runs:
+    run_info = _active_runs.get(body.run_id)
+    if run_info is None or run_info["workflow_id"] != workflow_id:
         raise HTTPException(status_code=404, detail="Run not found")
+
+    pending_request = run_info["pending_requests"].get(body.request_id)
+    if pending_request is None or pending_request["kind"] not in {
+        "approval",
+        "approval_batch",
+    }:
+        raise HTTPException(status_code=409, detail="Approval request is not pending")
+
+    decision_ids = pending_request["decision_ids"]
+    if pending_request["kind"] == "approval_batch":
+        if set(body.decisions) != decision_ids:
+            raise HTTPException(
+                status_code=422,
+                detail="A decision is required for every item in the approval batch",
+            )
+    elif body.decisions:
+        raise HTTPException(status_code=422, detail="Unexpected batch decisions")
+
+    _deliver_response(
+        body.run_id,
+        body.request_id,
+        {
+            "type": "approval",
+            "approved": body.approved,
+            "feedback": body.feedback,
+            "decisions": body.decisions,
+        },
+    )
     
-    _deliver_response(run_id, request_id, {
-        "type": "approval",
-        "approved": approved,
-        "feedback": feedback,
-        "decisions": decisions,
-    })
-    
-    logger.info("Approval submitted for run %s request %s: %s", run_id, request_id, approved)
+    logger.info(
+        "Approval submitted for run %s request %s: %s",
+        body.run_id,
+        body.request_id,
+        body.approved,
+    )
     return {"status": "accepted"}
 
 
 @app.post("/api/workflows/{workflow_id}/input")
-async def submit_input(workflow_id: str, body: dict[str, Any]) -> dict[str, Any]:
+async def submit_input(
+    workflow_id: str,
+    body: InputRequest,
+) -> dict[str, Any]:
     """Submit text input response for a pending input request.
     
     Args:
@@ -346,19 +412,28 @@ async def submit_input(workflow_id: str, body: dict[str, Any]) -> dict[str, Any]
     Returns:
         {"status": "accepted"}
     """
-    run_id = body.get("run_id")
-    request_id = body.get("request_id")
-    input_text = body.get("input", "")
-    
-    if run_id not in _active_runs:
+    run_info = _active_runs.get(body.run_id)
+    if run_info is None or run_info["workflow_id"] != workflow_id:
         raise HTTPException(status_code=404, detail="Run not found")
+
+    pending_request = run_info["pending_requests"].get(body.request_id)
+    if pending_request is None or pending_request["kind"] != "input":
+        raise HTTPException(status_code=409, detail="Input request is not pending")
+
+    _deliver_response(
+        body.run_id,
+        body.request_id,
+        {
+            "type": "input",
+            "input": body.input,
+        },
+    )
     
-    _deliver_response(run_id, request_id, {
-        "type": "input",
-        "input": input_text,
-    })
-    
-    logger.info("Input submitted for run %s request %s", run_id, request_id)
+    logger.info(
+        "Input submitted for run %s request %s",
+        body.run_id,
+        body.request_id,
+    )
     return {"status": "accepted"}
 
 
@@ -370,10 +445,9 @@ def _deliver_response(run_id: str, request_id: str, response: dict[str, Any]) ->
     """Hand a human's response to the workflow that is waiting on it."""
     run_info = _active_runs[run_id]
     waiter = run_info["waiters"].get(request_id)
-    if waiter is not None and not waiter.done():
-        waiter.set_result(response)
-    else:
-        run_info["pending_responses"][request_id] = response
+    if waiter is None or waiter.done():
+        raise HTTPException(status_code=409, detail="Request is not awaiting a response")
+    waiter.set_result(response)
 
 
 async def _watch_disconnect(websocket: WebSocket) -> None:
@@ -388,6 +462,7 @@ async def _request_response(
     websocket: WebSocket,
     run_id: str,
     request_id: str,
+    response_kind: Literal["approval", "approval_batch", "input"],
     payload: dict[str, Any],
     timeout_seconds: int = 300,
 ) -> dict[str, Any] | None:
@@ -399,6 +474,14 @@ async def _request_response(
     run_info = _active_runs[run_id]
     waiter: asyncio.Future = asyncio.get_running_loop().create_future()
     run_info["waiters"][request_id] = waiter
+    run_info["pending_requests"][request_id] = {
+        "kind": response_kind,
+        "decision_ids": {
+            item["request_id"]
+            for item in payload.get("items", [])
+            if isinstance(item, dict) and isinstance(item.get("request_id"), str)
+        },
+    }
     disconnect_task = asyncio.ensure_future(_watch_disconnect(websocket))
     try:
         await websocket.send_json(payload)
@@ -415,6 +498,9 @@ async def _request_response(
         return None
     finally:
         run_info["waiters"].pop(request_id, None)
+        run_info["pending_requests"].pop(request_id, None)
+        if not waiter.done():
+            waiter.cancel()
         disconnect_task.cancel()
 
 
@@ -476,7 +562,7 @@ async def websocket_workflow_stream(websocket: WebSocket, workflow_id: str, run_
         workflow_runner = _workflow_runners[workflow_id]
         user_input = run_info.get("input", "")
         
-        logger.info("Starting workflow execution for %s with input: %s", workflow_id, user_input[:100] if user_input else "(none)")
+        logger.info("Starting workflow execution for %s", workflow_id)
         
         # Stream events from the workflow
         agen = None
@@ -564,15 +650,21 @@ async def websocket_workflow_stream(websocket: WebSocket, workflow_id: str, run_
                     data = event_data if isinstance(event_data, dict) else {}
                     request_id = data.get("request_id", str(uuid.uuid4()))
                     
-                    reply = await _request_response(websocket, run_id, request_id, {
-                        "type": "approval_required",
-                        "timestamp": datetime.utcnow().isoformat(),
-                        "request_id": request_id,
-                        "prompt": data.get("prompt", "Approve?"),
-                        "content": data.get("content", ""),
-                        "agent_name": data.get("agent", ""),
-                        "severity": "info",
-                    })
+                    reply = await _request_response(
+                        websocket,
+                        run_id,
+                        request_id,
+                        "approval",
+                        {
+                            "type": "approval_required",
+                            "timestamp": datetime.utcnow().isoformat(),
+                            "request_id": request_id,
+                            "prompt": data.get("prompt", "Approve?"),
+                            "content": data.get("content", ""),
+                            "agent_name": data.get("agent", ""),
+                            "severity": "info",
+                        },
+                    )
                     if reply is None:
                         reply = {"type": "approval", "approved": False, "feedback": "timed out"}
                         await websocket.send_json({
@@ -588,20 +680,29 @@ async def websocket_workflow_stream(websocket: WebSocket, workflow_id: str, run_
                     data = event_data if isinstance(event_data, dict) else {}
                     request_id = data.get("request_id", str(uuid.uuid4()))
                     
-                    reply = await _request_response(websocket, run_id, request_id, {
-                        "type": "approval_batch",
-                        "timestamp": datetime.utcnow().isoformat(),
-                        "request_id": request_id,
-                        "prompt": data.get("prompt", "Review each item"),
-                        "items": data.get("items", []),
-                        "severity": "info",
-                    })
+                    reply = await _request_response(
+                        websocket,
+                        run_id,
+                        request_id,
+                        "approval_batch",
+                        {
+                            "type": "approval_batch",
+                            "timestamp": datetime.utcnow().isoformat(),
+                            "request_id": request_id,
+                            "prompt": data.get("prompt", "Review each item"),
+                            "items": data.get("items", []),
+                            "severity": "info",
+                        },
+                    )
                     if reply is None:
                         await websocket.send_json({
                             "type": "agent_message",
                             "timestamp": datetime.utcnow().isoformat(),
                             "agent_name": "system",
-                            "content": "No response received within 5 minutes; accepted all responses as-is.",
+                            "content": (
+                                "No response received within 5 minutes; "
+                                "unreviewed responses will be rejected."
+                            ),
                             "severity": "warning",
                         })
                 
@@ -610,15 +711,21 @@ async def websocket_workflow_stream(websocket: WebSocket, workflow_id: str, run_
                     data = event_data if isinstance(event_data, dict) else {}
                     request_id = data.get("request_id", str(uuid.uuid4()))
                     
-                    reply = await _request_response(websocket, run_id, request_id, {
-                        "type": "input_required",
-                        "timestamp": datetime.utcnow().isoformat(),
-                        "request_id": request_id,
-                        "prompt": data.get("prompt", "Enter input:"),
-                        "options": data.get("options", []),
-                        "agent_name": data.get("agent", ""),
-                        "severity": "info",
-                    })
+                    reply = await _request_response(
+                        websocket,
+                        run_id,
+                        request_id,
+                        "input",
+                        {
+                            "type": "input_required",
+                            "timestamp": datetime.utcnow().isoformat(),
+                            "request_id": request_id,
+                            "prompt": data.get("prompt", "Enter input:"),
+                            "options": data.get("options", []),
+                            "agent_name": data.get("agent", ""),
+                            "severity": "info",
+                        },
+                    )
                     if reply is None:
                         reply = {"type": "input", "input": ""}
                         await websocket.send_json({
@@ -652,11 +759,20 @@ async def websocket_workflow_stream(websocket: WebSocket, workflow_id: str, run_
                 
                 # Send errors
                 elif event_type == "error":
-                    content = event_data.get("message", str(event_data)) if isinstance(event_data, dict) else str(event_data)
+                    error_message = (
+                        event_data.get("message")
+                        if isinstance(event_data, dict)
+                        else None
+                    )
+                    if (
+                        not isinstance(error_message, str)
+                        or error_message not in _SAFE_WORKFLOW_ERRORS
+                    ):
+                        error_message = "Workflow failed. Check server logs."
                     await websocket.send_json({
                         "type": "error",
                         "timestamp": datetime.utcnow().isoformat(),
-                        "content": content,
+                        "content": error_message,
                         "severity": "error",
                     })
                 
@@ -677,10 +793,14 @@ async def websocket_workflow_stream(websocket: WebSocket, workflow_id: str, run_
             run_info["status"] = "cancelled"
         
         except Exception as e:
-            logger.exception("Error during workflow execution: %s", e)
+            logger.error(
+                "Workflow execution failed for %s (exception_type=%s)",
+                workflow_id,
+                type(e).__name__,
+            )
             await websocket.send_json({
                 "type": "error",
-                "content": f"Workflow error: {str(e)}",
+                "content": "Workflow failed. Check server logs.",
                 "severity": "error",
             })
             run_info["status"] = "error"
@@ -692,15 +812,22 @@ async def websocket_workflow_stream(websocket: WebSocket, workflow_id: str, run_
     except WebSocketDisconnect:
         logger.info("WebSocket disconnected for workflow %s run %s", workflow_id, run_id)
     except Exception as e:
-        logger.exception("Error in WebSocket handler: %s", e)
+        logger.error(
+            "WebSocket handler failed for workflow %s (exception_type=%s)",
+            workflow_id,
+            type(e).__name__,
+        )
         try:
             await websocket.send_json({
                 "type": "error",
-                "content": f"Error: {str(e)}",
+                "content": "Workflow failed. Check server logs.",
                 "severity": "error",
             })
-        except Exception:
-            pass
+        except Exception as send_error:
+            logger.debug(
+                "Could not send WebSocket error response (exception_type=%s)",
+                type(send_error).__name__,
+            )
 
 
 # ============================================================================

@@ -74,7 +74,7 @@ async def run_magentic_workflow(
                 credential=AzureCliCredential(),
             )
 
-        logger.info("Starting magentic workflow with topic: %s", topic[:100])
+        logger.info("Starting magentic workflow")
 
         # Initial task message
         yield WorkflowEvent(
@@ -238,12 +238,13 @@ Integrate all materials into a coherent narrative.""",
         )
 
     except Exception as e:
-        logger.exception("Magentic workflow error: %s", str(e))
+        logger.error(
+            "Magentic workflow failed (exception_type=%s)",
+            type(e).__name__,
+        )
         yield WorkflowEvent(
             type="error",
-            data={"content": f"Workflow error: {str(e)[:200]}"},
+            data={"content": "Workflow failed. Check server logs."},
             source_executor_id="system"
         )
-
-
 

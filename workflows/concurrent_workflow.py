@@ -35,6 +35,11 @@ from . import WorkflowConfig, reply_approved
 
 logger = logging.getLogger(__name__)
 
+
+def _is_batch_item_approved(decisions: dict[str, bool], request_id: str) -> bool:
+    """Require an explicit positive decision for every approved batch item."""
+    return decisions.get(request_id) is True
+
 # Display names shown in the dashboard for each analyst
 AGENT_LABELS = {
     "technical_analyst": "Technical Analyst",
@@ -92,7 +97,9 @@ async def aggregate_with_synthesis(
                         break
         except Exception as e:
             executor_id = getattr(r, "executor_id", "analyst")
-            expert_sections.append(f"{executor_id}: (error extracting output: {e})")
+            expert_sections.append(
+                f"{executor_id}: (output unavailable; exception type {type(e).__name__})"
+            )
     
     # Build prompt with human guidance
     guidance_text = (
@@ -308,11 +315,11 @@ async def run_concurrent_workflow(
                     source_executor_id="system"
                 )
                 
-                # Analysts the human did not decide on (e.g. timeout) are accepted as-is
+                # Missing decisions, including timeouts, are treated as rejection.
                 decisions = (reply or {}).get("decisions") or {}
                 responses: dict[str, AgentRequestInfoResponse] = {}
                 for request in pending_requests:
-                    if decisions.get(request.request_id, True):
+                    if _is_batch_item_approved(decisions, request.request_id):
                         responses[request.request_id] = AgentRequestInfoResponse.approve()
                     else:
                         yield WorkflowEvent(
@@ -326,7 +333,11 @@ async def run_concurrent_workflow(
                         ])
                 state.pending_responses = responses
                 
-                rejected = [r for r in pending_requests if not decisions.get(r.request_id, True)]
+                rejected = [
+                    request
+                    for request in pending_requests
+                    if not _is_batch_item_approved(decisions, request.request_id)
+                ]
                 yield WorkflowEvent(
                     type="progress",
                     data={"message": (
@@ -355,9 +366,15 @@ async def run_concurrent_workflow(
             )
     
     except Exception as e:
-        logger.exception("Error in concurrent workflow: %s", e)
+        logger.error(
+            "Concurrent workflow failed (exception_type=%s)",
+            type(e).__name__,
+        )
         yield WorkflowEvent(
             type="error",
-            data={"message": str(e), "error_type": type(e).__name__},
+            data={
+                "message": "Workflow failed. Check server logs.",
+                "error_type": type(e).__name__,
+            },
             source_executor_id="system"
         )

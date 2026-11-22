@@ -342,11 +342,13 @@ async def run_magentic_workflow(
         )
         
     except Exception as e:
-        logger.error(f"Magentic workflow error: {e}", exc_info=True)
+        logger.error(
+            "Magentic workflow failed (exception_type=%s)",
+            type(e).__name__,
+        )
         yield WorkflowEvent(
             type="error",
-            data={"message": f"Workflow error: {str(e)}"},
+            data={"message": "Workflow failed. Check server logs."},
             source_executor_id="system",
         )
-
 

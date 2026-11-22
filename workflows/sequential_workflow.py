@@ -197,9 +197,12 @@ async def run_sequential_workflow(
         )
     
     except Exception as e:
-        logger.exception("Error in sequential workflow: %s", e)
+        logger.error(
+            "Sequential workflow failed (exception_type=%s)",
+            type(e).__name__,
+        )
         yield WorkflowEvent(
             type="error",
-            data={"message": str(e)},
+            data={"message": "Workflow failed. Check server logs."},
             source_executor_id="system"
         )

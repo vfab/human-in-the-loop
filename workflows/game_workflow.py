@@ -121,7 +121,7 @@ class TurnManager(Executor):
         ctx: WorkflowContext[AgentExecutorRequest, str],
     ) -> None:
         """Continue game or finish based on human feedback."""
-        logger.debug("Feedback received for prompt: %s -> %s", original_request.prompt, feedback)
+        logger.debug("Human feedback received for guessing game")
         
         reply = feedback.strip().lower()
         
@@ -306,9 +306,12 @@ async def run_game_workflow(
         )
     
     except Exception as e:
-        logger.exception("Error in game workflow: %s", e)
+        logger.error(
+            "Game workflow failed (exception_type=%s)",
+            type(e).__name__,
+        )
         yield WorkflowEvent(
             type="error",
-            data={"message": str(e)},
+            data={"message": "Workflow failed. Check server logs."},
             source_executor_id="system"
         )

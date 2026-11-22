@@ -91,7 +91,7 @@ async def run_handoff_workflow(
                 credential=AzureCliCredential(),
             )
 
-        logger.info("Starting handoff workflow with topic: %s", topic[:100])
+        logger.info("Starting handoff workflow")
 
         # Initial message from user
         yield WorkflowEvent(
@@ -203,11 +203,12 @@ Be technical but clear.""",
         )
 
     except Exception as e:
-        logger.exception("Handoff workflow error: %s", str(e))
+        logger.error(
+            "Handoff workflow failed (exception_type=%s)",
+            type(e).__name__,
+        )
         yield WorkflowEvent(
             type="error",
-            data={"content": f"Workflow error: {str(e)[:200]}"},
+            data={"content": "Workflow failed. Check server logs."},
             source_executor_id="system"
         )
-
-

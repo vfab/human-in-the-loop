@@ -249,18 +249,25 @@ async def run_approval_workflow(
                         source_executor_id="system"
                     )
                 except Exception as e:
-                    logger.error("Failed to send email: %s", e)
+                    logger.error(
+                        "Email delivery failed (exception_type=%s)",
+                        type(e).__name__,
+                    )
                     yield WorkflowEvent(
                         type="error",
-                        data={"message": f"Failed to send email: {e}"},
+                        data={"message": "Email delivery failed."},
                         source_executor_id="system"
                     )
             
             except Exception as e:
-                logger.exception("Error processing email %d: %s", i + 1, e)
+                logger.error(
+                    "Email workflow item %d failed (exception_type=%s)",
+                    i + 1,
+                    type(e).__name__,
+                )
                 yield WorkflowEvent(
                     type="error",
-                    data={"message": f"Error processing email {i+1}: {e}"},
+                    data={"message": f"Email workflow item {i + 1} failed."},
                     source_executor_id="system"
                 )
         
@@ -271,9 +278,12 @@ async def run_approval_workflow(
         )
     
     except Exception as e:
-        logger.exception("Error in approval workflow: %s", e)
+        logger.error(
+            "Approval workflow failed (exception_type=%s)",
+            type(e).__name__,
+        )
         yield WorkflowEvent(
             type="error",
-            data={"message": str(e)},
+            data={"message": "Workflow failed. Check server logs."},
             source_executor_id="system"
         )
