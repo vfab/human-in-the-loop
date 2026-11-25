@@ -226,6 +226,7 @@ async def run_concurrent_workflow(
         state.pending_responses = None
         state.workflow_complete = False
         summary_text = ""
+        analyst_responses: dict[str, str] = {}
         
         while not state.workflow_complete:
             # Run or continue workflow
@@ -262,7 +263,15 @@ async def run_concurrent_workflow(
                             data={
                                 "request_id": "summary_review",
                                 "prompt": "Accept this synthesized summary?",
-                                "content": summary_text
+                                "content": summary_text,
+                                "email_context": (
+                                    f"Analysis topic:\n{analysis_topic}\n\n"
+                                    "Analyst responses:\n"
+                                    + "\n\n".join(
+                                        f"{name}:\n{text}"
+                                        for name, text in analyst_responses.items()
+                                    )
+                                ),
                             },
                             source_executor_id="system"
                         )
@@ -286,6 +295,9 @@ async def run_concurrent_workflow(
             if pending_requests:
                 # One review step for all analysts: the human approves or rejects each response
                 for request in pending_requests:
+                    analyst_responses[
+                        AGENT_LABELS.get(request.source_executor_id, request.source_executor_id)
+                    ] = request.data.agent_response.text
                     yield WorkflowEvent(
                         type="agent_message",
                         data={
@@ -300,6 +312,7 @@ async def run_concurrent_workflow(
                     data={
                         "request_id": "analyst_review",
                         "prompt": "Review each analyst's response",
+                        "email_context": f"Analysis topic:\n{analysis_topic}",
                         "items": [
                             {
                                 "request_id": request.request_id,

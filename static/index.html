@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>HITL Demo Dashboard</title>
-    <link rel="stylesheet" href="/static/css/style.css?v=11">
+    <link rel="stylesheet" href="/static/css/style.css?v=14">
 </head>
 <body>
     <div class="container">
@@ -53,6 +53,13 @@
                         </div>
                         <textarea id="workflowInput" placeholder="Enter input text..." rows="2"></textarea>
                         <div class="input-error" id="inputError" style="display: none;"></div>
+                        <div id="emailNotificationControls" hidden>
+                            <label class="notification-option">
+                                <input type="checkbox" id="emailNotifications">
+                                Email me when my input or approval is needed
+                            </label>
+                            <p class="notification-help">The workflow output, review prompts, and related context will be emailed to the configured recipient. Respond in this app and keep this page open; requests time out after five minutes.</p>
+                        </div>
                         <button class="btn btn-primary" id="startButton">Start Workflow</button>
                     </div>
 
@@ -71,6 +78,7 @@
                     <div class="modal" id="approvalModal" style="display: none;">
                         <div class="modal-content">
                             <h3>Approval Required</h3>
+                            <p id="approvalEmailStatus" class="email-notice" role="status" style="display: none;"></p>
                             <p id="approvalPrompt"></p>
                             <div class="approval-content" id="approvalContent"></div>
                             <div class="modal-buttons">
@@ -84,6 +92,7 @@
                     <div class="modal" id="batchModal" style="display: none;">
                         <div class="modal-content modal-wide">
                             <h3 id="batchTitle">Review Responses</h3>
+                            <p id="batchEmailStatus" class="email-notice" role="status" style="display: none;"></p>
                             <div class="batch-list" id="batchList"></div>
                             <div class="modal-buttons">
                                 <button class="btn btn-secondary" id="batchApproveAllButton">Approve all</button>
@@ -94,6 +103,7 @@
 
                     <!-- Input Bar: docked under the output so the conversation stays visible -->
                     <div class="input-bar" id="inputModal" style="display: none;">
+                        <p id="inputEmailStatus" class="email-notice" role="status" style="display: none;"></p>
                         <div class="input-bar-prompt" id="inputPrompt"></div>
                         <div class="input-options" id="inputOptions"></div>
                         <div class="input-bar-row">
@@ -113,6 +123,6 @@
         </footer>
     </div>
 
-    <script src="/static/js/dashboard.js?v=13"></script>
+    <script src="/static/js/dashboard.js?v=16"></script>
 </body>
 </html>

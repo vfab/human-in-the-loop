@@ -37,6 +37,7 @@ Environment Variables (from .env):
 import asyncio
 import logging
 import os
+import smtplib
 import uuid
 from contextlib import asynccontextmanager
 from datetime import datetime, timedelta
@@ -55,7 +56,11 @@ from workflows import WorkflowConfig
 from workflows.concurrent_workflow import run_concurrent_workflow
 from workflows.group_chat_workflow import run_group_chat_workflow
 from workflows.sequential_workflow import run_sequential_workflow
-from workflows.approval_workflow import run_approval_workflow
+from workflows.approval_workflow import (
+    run_approval_workflow,
+    send_notification_email,
+    validate_smtp_config,
+)
 from workflows.game_workflow import run_game_workflow
 from workflows.handoff_workflow_simple import run_handoff_workflow
 from workflows.magentic_workflow_simple import run_magentic_workflow
@@ -75,6 +80,7 @@ class WorkflowMetadata(BaseModel):
     description: str
     input_required: bool = False
     input_placeholder: str = ""
+    email_notifications_supported: bool = False
 
 
 class WorkflowEventMessage(BaseModel):
@@ -94,6 +100,7 @@ class APIRequest(BaseModel):
 
 class StartWorkflowRequest(APIRequest):
     input: StrictStr = Field(default="", max_length=10_000)
+    email_notifications: StrictBool = False
 
 
 class ApprovalRequest(APIRequest):
@@ -119,6 +126,7 @@ _config: WorkflowConfig | None = None
 _workflow_runners: dict[str, Any] = {}  # Placeholder for workflow runner functions
 _active_runs: dict[str, dict[str, Any]] = {}  # Track running workflows
 _TOPIC_REQUIRED = {"concurrent", "group_chat", "sequential", "handoff", "magentic"}  # Workflows that need a user topic
+_EMAIL_NOTIFICATION_WORKFLOWS = frozenset({"sequential", "concurrent", "group_chat", "approval"})
 _STALE_RUN_MAX_AGE_DAYS = int(os.getenv("STALE_RUN_MAX_AGE_DAYS", "7"))  # Cleanup runs older than N days
 _SAFE_WORKFLOW_ERRORS = {
     "Missing AZURE_OPENAI_ENDPOINT",
@@ -257,14 +265,16 @@ async def list_workflows() -> list[WorkflowMetadata]:
             name="Sequential",
             description="Sequential workflow with human steering",
             input_required=True,
-            input_placeholder="Enter content to review..."
+            input_placeholder="Enter content to review...",
+            email_notifications_supported="sequential" in _EMAIL_NOTIFICATION_WORKFLOWS,
         ),
         WorkflowMetadata(
             id="concurrent",
             name="Concurrent",
             description="Multi-perspective analysis with concurrent agents and approval",
             input_required=True,
-            input_placeholder="Enter topic to analyze..."
+            input_placeholder="Enter topic to analyze...",
+            email_notifications_supported="concurrent" in _EMAIL_NOTIFICATION_WORKFLOWS,
         ),
         WorkflowMetadata(
             id="handoff",
@@ -278,7 +288,8 @@ async def list_workflows() -> list[WorkflowMetadata]:
             name="Group Chat",
             description="Sequential group chat with steering input",
             input_required=True,
-            input_placeholder="Enter discussion topic..."
+            input_placeholder="Enter discussion topic...",
+            email_notifications_supported="group_chat" in _EMAIL_NOTIFICATION_WORKFLOWS,
         ),
         WorkflowMetadata(
             id="magentic",
@@ -320,10 +331,24 @@ async def start_workflow(
     
     if workflow_id in _TOPIC_REQUIRED and not str(input_text).strip():
         raise HTTPException(status_code=400, detail="A topic is required for this workflow")
-    
+
+    if body.email_notifications:
+        if workflow_id not in _EMAIL_NOTIFICATION_WORKFLOWS:
+            raise HTTPException(status_code=422, detail="Email notifications are not supported for this workflow")
+        if _config is None:
+            raise HTTPException(status_code=503, detail="Email notifications are not configured")
+        try:
+            validate_smtp_config(_config)
+        except ValueError as exc:
+            raise HTTPException(
+                status_code=503,
+                detail="Email notifications require SMTP_USER, SMTP_PASSWORD, and a recipient",
+            ) from exc
+
     _active_runs[run_id] = {
         "workflow_id": workflow_id,
         "input": input_text,
+        "email_notifications": body.email_notifications,
         "started_at": datetime.utcnow().isoformat(),
         "status": "running",
         "pending_requests": {},  # Requests currently awaiting a human response
@@ -458,6 +483,21 @@ async def _watch_disconnect(websocket: WebSocket) -> None:
             return
 
 
+async def _send_output(
+    websocket: WebSocket, run_info: dict[str, Any], agent: str, content: str, severity: str = "info",
+) -> None:
+    """Send and record a dashboard output message for later notifications."""
+    await websocket.send_json({
+        "type": "agent_message",
+        "timestamp": datetime.utcnow().isoformat(),
+        "agent_name": agent,
+        "content": content,
+        "severity": severity,
+    })
+    if "workflow_output" in run_info:
+        run_info["workflow_output"].append(f"{agent}:\n{content}")
+
+
 async def _request_response(
     websocket: WebSocket,
     run_id: str,
@@ -484,7 +524,35 @@ async def _request_response(
     }
     disconnect_task = asyncio.ensure_future(_watch_disconnect(websocket))
     try:
-        await websocket.send_json(payload)
+        notification_status = None
+        if run_info.get("email_notifications", False):
+            try:
+                if _config is None:
+                    raise ValueError("Email configuration is not available")
+                email_payload = payload
+                if "workflow_output" in run_info:
+                    email_payload = {
+                        **payload,
+                        "workflow_output": "\n\n".join(run_info["workflow_output"]),
+                    }
+                await asyncio.to_thread(
+                    send_notification_email, _config, run_info["workflow_id"], response_kind, email_payload
+                )
+                notification_status = "sent"
+                await _send_output(
+                    websocket, run_info, "system",
+                    "Email notification sent to the configured mail server. Check your email and respond in the dashboard.",
+                )
+            except (OSError, smtplib.SMTPException, ValueError) as exc:
+                notification_status = "failed"
+                logger.warning(
+                    "Email notification failed (exception_type=%s)", type(exc).__name__
+                )
+                await _send_output(
+                    websocket, run_info, "system",
+                    "Email notification failed. Please respond in the dashboard.", "warning",
+                )
+        await websocket.send_json({**payload, "email_notification": notification_status})
         done, _ = await asyncio.wait(
             {waiter, disconnect_task},
             timeout=timeout_seconds,
@@ -540,6 +608,11 @@ async def websocket_workflow_stream(websocket: WebSocket, workflow_id: str, run_
             return
         
         run_info = _active_runs[run_id]
+        if run_info.get("email_notifications", False):
+            run_info["workflow_output"] = [
+                "system:\nWorkflow starting...",
+                f"system:\nStarting {workflow_id} workflow...",
+            ]
         
         # Send initial status
         await websocket.send_json({
@@ -637,13 +710,7 @@ async def websocket_workflow_stream(websocket: WebSocket, workflow_id: str, run_
                         continue
                     agent_name = event_data.get("agent", event_source) if isinstance(event_data, dict) else event_source
                     
-                    await websocket.send_json({
-                        "type": "agent_message",
-                        "timestamp": datetime.utcnow().isoformat(),
-                        "agent_name": agent_name,
-                        "content": content,
-                        "severity": "info",
-                    })
+                    await _send_output(websocket, run_info, agent_name, content)
                 
                 # Send approval requests and wait for the human's decision
                 elif event_type == "approval_required":
@@ -661,19 +728,22 @@ async def websocket_workflow_stream(websocket: WebSocket, workflow_id: str, run_
                             "request_id": request_id,
                             "prompt": data.get("prompt", "Approve?"),
                             "content": data.get("content", ""),
+                            "email_context": data.get("email_context", ""),
                             "agent_name": data.get("agent", ""),
                             "severity": "info",
                         },
                     )
                     if reply is None:
                         reply = {"type": "approval", "approved": False, "feedback": "timed out"}
-                        await websocket.send_json({
-                            "type": "agent_message",
-                            "timestamp": datetime.utcnow().isoformat(),
-                            "agent_name": "system",
-                            "content": "No response received within 5 minutes; treated as rejected.",
-                            "severity": "warning",
-                        })
+                        await _send_output(
+                            websocket, run_info, "system",
+                            "No response received within 5 minutes; treated as rejected.", "warning",
+                        )
+                    else:
+                        await _send_output(
+                            websocket, run_info, "system",
+                            "✓ Response approved" if reply.get("approved") else "✗ Response rejected",
+                        )
                 
                 # Send a batch of items to approve individually (one modal, one decision each)
                 elif event_type == "approval_batch":
@@ -691,20 +761,23 @@ async def websocket_workflow_stream(websocket: WebSocket, workflow_id: str, run_
                             "request_id": request_id,
                             "prompt": data.get("prompt", "Review each item"),
                             "items": data.get("items", []),
+                            "email_context": data.get("email_context", ""),
                             "severity": "info",
                         },
                     )
                     if reply is None:
-                        await websocket.send_json({
-                            "type": "agent_message",
-                            "timestamp": datetime.utcnow().isoformat(),
-                            "agent_name": "system",
-                            "content": (
-                                "No response received within 5 minutes; "
-                                "unreviewed responses will be rejected."
-                            ),
-                            "severity": "warning",
-                        })
+                        await _send_output(
+                            websocket, run_info, "system",
+                            "No response received within 5 minutes; unreviewed responses will be rejected.",
+                            "warning",
+                        )
+                    else:
+                        decisions = reply.get("decisions", {})
+                        approved = sum(decisions.values())
+                        await _send_output(
+                            websocket, run_info, "system",
+                            f"{approved} of {len(decisions)} responses approved",
+                        )
                 
                 # Send input requests and wait for the human's text
                 elif event_type == "input_required":
@@ -721,6 +794,8 @@ async def websocket_workflow_stream(websocket: WebSocket, workflow_id: str, run_
                             "timestamp": datetime.utcnow().isoformat(),
                             "request_id": request_id,
                             "prompt": data.get("prompt", "Enter input:"),
+                            "content": data.get("content", ""),
+                            "email_context": data.get("email_context", ""),
                             "options": data.get("options", []),
                             "agent_name": data.get("agent", ""),
                             "severity": "info",
@@ -728,13 +803,10 @@ async def websocket_workflow_stream(websocket: WebSocket, workflow_id: str, run_
                     )
                     if reply is None:
                         reply = {"type": "input", "input": ""}
-                        await websocket.send_json({
-                            "type": "agent_message",
-                            "timestamp": datetime.utcnow().isoformat(),
-                            "agent_name": "system",
-                            "content": "No response received within 5 minutes; continuing without input.",
-                            "severity": "warning",
-                        })
+                        await _send_output(
+                            websocket, run_info, "system",
+                            "No response received within 5 minutes; continuing without input.", "warning",
+                        )
                 
                 # Progress notes shown while the workflow works between human steps
                 elif event_type == "progress":
@@ -806,6 +878,7 @@ async def websocket_workflow_stream(websocket: WebSocket, workflow_id: str, run_
             run_info["status"] = "error"
         
         finally:
+            run_info.pop("workflow_output", None)
             if agen is not None:
                 await agen.aclose()
         

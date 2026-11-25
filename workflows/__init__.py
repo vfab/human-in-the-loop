@@ -13,7 +13,9 @@ credentials, and yields events for the dashboard to display and handle.
 
 import os
 from dataclasses import dataclass
-from typing import Optional
+from typing import Optional, Sequence
+
+from agent_framework import Message
 
 
 @dataclass
@@ -95,3 +97,15 @@ def reply_text(reply: Optional[dict]) -> str:
     if reply is None:
         return ""
     return str(reply.get("input") or reply.get("feedback") or "").strip()
+
+
+def format_review_conversation(messages: Sequence[Message]) -> str:
+    """Format user and agent conversation messages for human review."""
+    sections = []
+    for message in messages:
+        role = message.role
+        if role not in ("user", "assistant") or not message.text:
+            continue
+        name = message.author_name or ("User" if role == "user" else "Assistant")
+        sections.append(f"{name}:\n{message.text}")
+    return "\n\n".join(sections)

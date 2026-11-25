@@ -64,6 +64,8 @@ class HITLDashboard {
         this.savedInputs = {};
         this.ws = null;
         this.pendingRequests = {};
+        this.emailPreference = false;
+        this.running = false;
         this.init();
     }
 
@@ -115,6 +117,7 @@ class HITLDashboard {
             this.abortRun();
         }
         this.currentWorkflow = workflow;
+        this.setRunning(this.running);
         this.clearInputError();
         
         // Update UI
@@ -224,6 +227,9 @@ class HITLDashboard {
         });
         // Start button
         document.getElementById('startButton').addEventListener('click', () => this.startWorkflow());
+        document.getElementById('emailNotifications').addEventListener('change', (e) => {
+            this.emailPreference = e.target.checked;
+        });
         
         // Close button
         document.getElementById('closeButton').addEventListener('click', () => this.closeWorkflow());
@@ -271,11 +277,18 @@ class HITLDashboard {
                 {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ input })
+                    body: JSON.stringify({
+                        input,
+                        email_notifications: this.currentWorkflow.email_notifications_supported
+                            && document.getElementById('emailNotifications').checked,
+                    })
                 }
             );
             
             if (!response.ok) {
+                if (response.status === 503) {
+                    throw new Error('Email notifications require SMTP configuration. Check the local development guide.');
+                }
                 throw new Error(`HTTP ${response.status}`);
             }
             
@@ -445,9 +458,19 @@ class HITLDashboard {
         output.innerHTML = '<p class="placeholder">Waiting for workflow output...</p>';
     }
 
+    showEmailStatus(elementId, status, action) {
+        const notice = document.getElementById(elementId);
+        notice.style.display = status ? '' : 'none';
+        notice.classList.toggle('failed', status === 'failed');
+        notice.textContent = status === 'sent'
+            ? `Email sent to the mail server. Check your email, then ${action} here.`
+            : 'Email notification failed. Review and respond here instead.';
+    }
+
     showApprovalModal(event) {
         const modal = document.getElementById('approvalModal');
         document.getElementById('approvalPrompt').textContent = event.prompt || 'Approve?';
+        this.showEmailStatus('approvalEmailStatus', event.email_notification, 'approve or reject');
         
         const content = document.getElementById('approvalContent');
         content.textContent = event.content || '';
@@ -462,6 +485,7 @@ class HITLDashboard {
     showInputModal(event) {
         const modal = document.getElementById('inputModal');
         document.getElementById('inputPrompt').textContent = event.prompt || 'Enter input:';
+        this.showEmailStatus('inputEmailStatus', event.email_notification, 'provide your input');
         
         // Quick-answer buttons for workflows that offer fixed options (e.g. the guessing game)
         const options = document.getElementById('inputOptions');
@@ -490,6 +514,7 @@ class HITLDashboard {
         this.currentRequestId = event.request_id;
         this.batchDecisions = {};
         document.getElementById('batchTitle').textContent = event.prompt || 'Review responses';
+        this.showEmailStatus('batchEmailStatus', event.email_notification, 'approve or reject each response');
         
         const list = document.getElementById('batchList');
         list.innerHTML = '';
@@ -571,10 +596,7 @@ class HITLDashboard {
                 throw new Error(`HTTP ${response.status}`);
             }
             
-            const approvedCount = Object.values(this.batchDecisions).filter(Boolean).length;
-            const total = Object.keys(this.batchDecisions).length;
             this.closeBatchModal();
-            this.addMessage('system', `${approvedCount} of ${total} responses approved`);
             this.showWorking();
             
         } catch (error) {
@@ -598,7 +620,13 @@ class HITLDashboard {
     }
 
     setRunning(running) {
+        this.running = running;
         document.getElementById('startButton').disabled = running;
+        const checkbox = document.getElementById('emailNotifications');
+        const supported = !!this.currentWorkflow?.email_notifications_supported;
+        checkbox.disabled = running || !supported;
+        checkbox.checked = supported && this.emailPreference;
+        document.getElementById('emailNotificationControls').hidden = !supported;
     }
 
     closeInputModal() {
@@ -628,10 +656,6 @@ class HITLDashboard {
             }
             
             this.closeApprovalModal();
-            this.addMessage(
-                'system',
-                approved ? '✓ Response approved' : '✗ Response rejected'
-            );
             this.showWorking();
             
         } catch (error) {

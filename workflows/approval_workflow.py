@@ -21,7 +21,7 @@ import logging
 import smtplib
 from dataclasses import dataclass
 from email.message import EmailMessage
-from typing import AsyncIterator, Optional
+from typing import Any, AsyncIterator, Optional
 
 from agent_framework_openai import OpenAIChatCompletionClient
 from azure.identity import AzureCliCredential
@@ -91,27 +91,81 @@ def _resolve_email_recipient(config: WorkflowConfig) -> str:
     raise ValueError("Missing recipient config. Set EMAIL_RECIPIENT or SMTP_USER.")
 
 
-def send_email_via_smtp(config: WorkflowConfig, email: Email, body: str) -> None:
-    """Send email response through SMTP."""
-    recipient = _resolve_email_recipient(config)
-    
+def validate_smtp_config(config: WorkflowConfig) -> None:
+    """Validate the configuration shared by outgoing emails."""
+    _resolve_email_recipient(config)
     if not config.smtp_user or not config.smtp_password:
         raise ValueError("Missing SMTP auth. Set SMTP_USER and SMTP_PASSWORD.")
-    
-    logger.info("Sending email to: %s", recipient)
-    
+
+
+def send_smtp_message(config: WorkflowConfig, subject: str, body: str) -> None:
+    """Send a message to the configured recipient through SMTP."""
+    validate_smtp_config(config)
+    recipient = _resolve_email_recipient(config)
     message = EmailMessage()
     message["From"] = config.smtp_user
     message["To"] = recipient
-    message["Subject"] = f"Re: {email.subject}"
+    message["Subject"] = subject
     message.set_content(body)
-    
+
     smtp_host = config.smtp_host or "smtp.gmail.com"
     smtp_port = config.smtp_port or 465
-    
-    with smtplib.SMTP_SSL(smtp_host, smtp_port) as smtp:
+
+    with smtplib.SMTP_SSL(smtp_host, smtp_port, timeout=15) as smtp:
         smtp.login(config.smtp_user, config.smtp_password)
         smtp.send_message(message)
+
+
+def send_email_via_smtp(config: WorkflowConfig, email: Email, body: str) -> None:
+    """Send an approved email response through SMTP."""
+    send_smtp_message(config, f"Re: {email.subject}", body)
+
+
+def send_notification_email(
+    config: WorkflowConfig,
+    workflow_id: str,
+    request_kind: str,
+    payload: dict[str, Any],
+) -> None:
+    """Notify the recipient of a pending human interaction."""
+    action = "input" if request_kind == "input" else "approval"
+    subject = "Human-in-the-loop action required"
+    body = (
+        f"The {workflow_id} workflow is waiting for your {action}.\n\n"
+        "Return to the open dashboard to respond. Keep the page open; "
+        "the request expires after five minutes.\n"
+    )
+    prompt = payload.get("prompt")
+    if isinstance(prompt, str) and prompt:
+        body += f"\nRequest:\n{prompt}\n"
+    output = payload.get("workflow_output")
+    if isinstance(output, str) and output:
+        body += f"\nWorkflow output:\n{output}\n"
+    context = payload.get("email_context")
+    if isinstance(context, str) and context:
+        body += f"\nWorkflow context:\n{context}\n"
+    content = payload.get("content")
+    if isinstance(content, str) and content:
+        body += f"\nResponse to review:\n{content}\n"
+    options = payload.get("options")
+    if isinstance(options, list) and all(isinstance(option, str) for option in options) and options:
+        body += f"\nOptions: {', '.join(options)}\n"
+    if request_kind == "approval_batch":
+        if workflow_id == "concurrent":
+            subject = "Concurrent workflow: analyst review required"
+        sections = [
+            f"{item.get('label') or item.get('agent') or 'Analyst'}:\n"
+            f"{item.get('content', '')}"
+            for item in payload.get("items", [])
+            if isinstance(item, dict)
+        ]
+        body += "\nReview each response and approve or reject it in the dashboard:\n\n"
+        body += "\n\n".join(sections) + "\n"
+    send_smtp_message(
+        config,
+        subject,
+        body,
+    )
 
 
 async def run_approval_workflow(
@@ -226,6 +280,7 @@ async def run_approval_workflow(
                         "prompt": f"Send this response to {_resolve_email_recipient(config)}?",
                         "subject": f"Re: {email.subject}",
                         "content": draft_body,
+                        "email_context": f"Original email:\n{email}",
                     },
                     source_executor_id="system"
                 )

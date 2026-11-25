@@ -29,7 +29,7 @@ from agent_framework_orchestrations import AgentRequestInfoResponse, SequentialB
 from agent_framework_openai import OpenAIChatCompletionClient
 from azure.identity import AzureCliCredential
 
-from . import WorkflowConfig, reply_approved, reply_text
+from . import WorkflowConfig, format_review_conversation, reply_approved, reply_text
 
 logger = logging.getLogger(__name__)
 
@@ -183,6 +183,12 @@ async def run_group_chat_workflow(
                                 data={
                                     "request_id": event.request_id,
                                     "prompt": "Give guidance to have the pragmatist revise, or leave blank to continue:",
+                                    "content": agent_response,
+                                    "email_context": (
+                                        f"Discussion topic:\n{topic}\n\n"
+                                        "Conversation so far:\n"
+                                        f"{format_review_conversation(event.data.full_conversation)}"
+                                    ),
                                     "agent": "pragmatist"
                                 },
                                 source_executor_id="system"
@@ -247,7 +253,8 @@ async def run_group_chat_workflow(
                     data={
                         "request_id": "discussion_review",
                         "prompt": "Accept this discussion?",
-                        "content": summary_text
+                        "content": summary_text,
+                        "email_context": f"Discussion topic:\n{topic}",
                     },
                     source_executor_id="system"
                 )

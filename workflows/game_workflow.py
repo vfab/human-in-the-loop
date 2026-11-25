@@ -256,6 +256,7 @@ async def run_game_workflow(
                             data={
                                 "request_id": event.request_id,
                                 "prompt": request_data.prompt,
+                                "email_context": f"Think of a number between 1 and {upper}.",
                                 "options": ["higher", "lower", "correct", "exit"]
                             },
                             source_executor_id="system"

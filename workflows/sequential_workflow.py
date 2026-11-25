@@ -29,7 +29,7 @@ from agent_framework_orchestrations import AgentRequestInfoResponse, SequentialB
 from agent_framework_openai import OpenAIChatCompletionClient
 from azure.identity import AzureCliCredential
 
-from . import WorkflowConfig, reply_text
+from . import WorkflowConfig, format_review_conversation, reply_text
 
 logger = logging.getLogger(__name__)
 
@@ -152,6 +152,12 @@ async def run_sequential_workflow(
                             data={
                                 "request_id": event.request_id,
                                 "prompt": "Give feedback to have the editor revise, or leave blank to approve:",
+                                "content": agent_response,
+                                "email_context": (
+                                    f"Document topic:\n{topic}\n\n"
+                                    "Conversation so far:\n"
+                                    f"{format_review_conversation(event.data.full_conversation)}"
+                                ),
                                 "agent": "editor"
                             },
                             source_executor_id="system"

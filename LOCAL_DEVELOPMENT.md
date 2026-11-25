@@ -40,7 +40,9 @@ or `AZURE_OPENAI_CHAT_MODEL`.
 * `AZURE_OPENAI_API_VERSION`: optional; the application default is
   `2024-10-21`
 * `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASSWORD`, and `EMAIL_RECIPIENT`:
-  optional email workflow settings; the default SMTP port is `465`
+  optional settings for the email workflow and dashboard notifications; the
+  default SMTP host is `smtp.gmail.com` and port is `465`. If
+  `EMAIL_RECIPIENT` is unset, the SMTP user is used as the recipient.
 
 The `.env.example` file may explicitly set an API version; that value overrides
 the application default. Keep `.env` out of source control and never commit
@@ -63,6 +65,21 @@ The dashboard provides these workflows:
 
 The dashboard API includes `GET /workflows`, `GET /health`, and `GET /docs`.
 Workflow updates are streamed over WebSockets.
+
+Select **Email me when my input or approval is needed** before starting a
+Sequential, Concurrent, or Group Chat workflow to receive an email for each human
+interaction. Email notifications require an SMTP account and recipient. They
+include the workflow output so far, the review prompt, and associated context
+such as topics, messages, and drafts. Output timestamps and the temporary
+working indicator are not included. Select this option only when sending that
+content to the configured recipient is appropriate. The dashboard reports
+whether the mail server accepted the notification; this does not guarantee
+delivery. Notifications are unavailable for Handoff, Magentic, and Guessing
+Game. The approval workflow also supports notifications through the API.
+Respond in the dashboard, not by email. Keep the page open: requests time out
+after five minutes, and closing or refreshing the page cancels the interaction.
+The approval workflow can also send its generated email after approval,
+regardless of the notification checkbox.
 
 Run the test suite from the activated project environment:
 
